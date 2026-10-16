@@ -6,6 +6,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.espresso.Espresso.pressBack
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -45,21 +47,21 @@ class NativeSmokeTest {
         val cartWrite = api.requests.last { it.method == "PUT" && it.path == "/api/store/cart" }
         assertEquals(101L, cartWrite.body.getJSONArray("items").getJSONObject(0).getLong("product_id"))
         assertEquals(1, cartWrite.body.getJSONArray("items").getJSONObject(0).getInt("quantity"))
-        compose.onNodeWithText("Корзина", useUnmergedTree = false).performScrollTo().performClick()
+        compose.onNode(hasText("Корзина") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("1 шт.").assertExists()
         screenshot("02-store-cart")
-        compose.onNodeWithText("Оформить заказ").performScrollTo().performClick()
+        compose.onNodeWithTag("storeInlineCart").assertExists()
         compose.onNodeWithText("Электронная доставка: бесплатно").assertExists()
-        compose.onNodeWithText("Подтвердить заказ").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Оформить заказ").performScrollTo().assertIsNotEnabled()
         input("ФИО", "Тестовый Покупатель")
         input("Телефон", "+79991234567")
-        input("E-mail для электронной книги", "native-test@example.invalid")
+        input("E-mail для доставки цифровых товаров", "native-test@example.invalid")
         compose.onNodeWithText("Принимаю публичную оферту").performScrollTo().performClick()
         compose.onNodeWithText("Согласен на обработку персональных данных для доставки").performScrollTo().performClick()
         compose.onNodeWithText("Мне исполнилось 18 лет").performScrollTo().performClick()
-        compose.onNodeWithText("Подтвердить заказ").performScrollTo().assertIsEnabled()
+        compose.onNodeWithText("Оформить заказ").performScrollTo().assertIsEnabled()
         screenshot("03-checkout-confirmation")
-        compose.onNodeWithText("Подтвердить заказ").performClick()
+        compose.onNodeWithText("Оформить заказ").performClick()
         compose.waitUntil { api.requests.any { it.path == "/api/store/checkout" } }
         val checkout = api.requests.single { it.path == "/api/store/checkout" }
         assertEquals("digital", checkout.body.getString("delivery_method"))
@@ -75,10 +77,11 @@ class NativeSmokeTest {
 
     @Test fun recipeChoiceAndWeightAreSentToServerCalculator() {
         compose.setContent { KolbaTheme { RecipesScreen(api) } }
-        compose.onNodeWithText("Докторская тестовая").performScrollTo().performClick()
-        compose.onNodeWithText("Свинина ▾").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Категория").assertExists()
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Докторская тестовая")
+        compose.onNodeWithTag("site-select-Вариант ингредиента").performScrollTo().performClick()
         compose.onNodeWithText("Говядина", useUnmergedTree = false).performClick()
-        compose.onNodeWithText("Говядина ▾").assertExists()
+        compose.onNodeWithTag("site-select-Вариант ингредиента").assertTextContains("Говядина")
         val savedChoice = api.requests.single { it.path == "/api/recipes/doktorskaya-test/choices" }
         assertEquals("beef", savedChoice.body.getJSONObject("choices").getString("Мясное сырьё"))
         assertTrue(api.requests.none { it.path == "/api/calc/recipe" })
@@ -91,9 +94,9 @@ class NativeSmokeTest {
         assertEquals("beef", request.body.getJSONObject("choices").getString("Мясное сырьё"))
         compose.onNodeWithText("Результат на 2 кг").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("1 кг 400 гр").assertExists()
-        compose.onNodeWithText("Сохранить или отправить PDF").assertExists()
+        compose.onNodeWithText("Распечатать PDF").assertExists()
         screenshot("05-recipe-calculation")
-        compose.onNodeWithText("Говядина ▾").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Вариант ингредиента").performScrollTo().performClick()
         compose.onNodeWithText("Свинина", useUnmergedTree = false).performClick()
         compose.waitUntil { api.requests.count { it.path == "/api/calc/recipe" } == 2 }
         val recalculated = api.requests.last { it.path == "/api/calc/recipe" }
@@ -169,22 +172,35 @@ class NativeSmokeTest {
 
     @Test fun wholeApplicationKeepsNavigationAndBannerDraft() {
         compose.setContent { KolbaTheme { KolbaApp(api, enablePushStartup = false) } }
-        compose.onNodeWithText("Колбаски на покупки").assertIsDisplayed()
+        compose.onNodeWithText("Колбаски на покупки").assertExists()
         compose.onNodeWithTag("site-bottom-account").assertIsDisplayed()
         screenshot("09-full-app-catalog")
         compose.onNodeWithTag("site-bottom-account").performClick()
-        compose.onNodeWithText("Тестовый профиль").assertExists()
+        compose.onNodeWithText("Рады вас видеть, Тестовый профиль").assertExists()
         compose.onNodeWithText("Редактор баннеров").assertDoesNotExist()
         compose.onNodeWithTag("site-bottom-more").performClick()
         compose.onNodeWithTag("site-more-admin").performScrollTo().performClick()
+        compose.onNodeWithText("Добрый день, Тестовый профиль").assertExists()
+        screenshot("11-full-app-admin")
+        compose.onNodeWithTag("admin-tab-store").performScrollTo().performClick()
         compose.onNodeWithText("Баннеры", substring = false).performScrollTo().performClick()
         compose.onAllNodesWithText("Редактировать").onFirst().performScrollTo().performClick()
         input("Заголовок", "Черновик после переключения")
         compose.onNodeWithText("Есть несохранённые изменения").assertExists()
+        closeSoftKeyboard()
+        compose.onNodeWithTag("site-bottom-store").assertDoesNotExist()
+        // The website editor tabs stay available while editing; the draft survives section changes.
+        compose.onNodeWithTag("admin-tab-store").performScrollTo().performClick()
+        pressBack()
+        compose.onNodeWithText("Добрый день, Тестовый профиль").assertExists()
+        pressBack()
+        compose.onNodeWithTag("site-bottom-account").assertIsSelected()
         compose.onNodeWithTag("site-bottom-store").performClick()
         compose.onNodeWithText("Колбаски на покупки").assertExists()
         compose.onNodeWithTag("site-bottom-more").performClick()
         compose.onNodeWithTag("site-more-admin").performScrollTo().performClick()
+        compose.onNodeWithTag("admin-tab-store").performScrollTo().performClick()
+        compose.onNodeWithText("Баннеры", substring = false).performScrollTo().performClick()
         compose.onNodeWithText("Баннеры магазина").assertExists()
         compose.onNodeWithText("1. Черновик после переключения").performScrollTo().assertIsDisplayed()
         compose.onNode(hasSetTextAction() and hasText("Заголовок")).assertTextContains("Черновик после переключения")
@@ -201,6 +217,7 @@ class NativeSmokeTest {
     private fun screenshot(name: String) {
         compose.waitForIdle()
         instrumentation.waitForIdleSync()
+        awaitPresentedUiFrame(instrumentation)
         val image = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("Could not capture $name")
         val directory = File(context.getExternalFilesDir(null), "native-smoke").apply { mkdirs() }
         File(directory, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -232,10 +249,14 @@ private class FakeApi(context: Context) : ApiClient(context, "https://native-smo
     override suspend fun get(path: String): JSONObject {
         record("GET", path)
         return when (path) {
+            "/api/auth/google/config", "/api/auth/vk/config" -> JSONObject().put("enabled", false)
             "/api/android/push/config" -> JSONObject().put("enabled", false)
             "/api/access/status" -> JSONObject().put("can_use_app", true)
+            "/api/bootstrap" -> JSONObject("""{"categories_count":1,"equipment_count":0,"faq_count":0,"handbook_sections":[],"payments":{"plans":[]}}""")
+            "/api/account/billing" -> JSONObject("""{"status":"none","tier":"free","autopay_enabled":false}""")
+            "/api/admin/dashboard" -> JSONObject("""{"kpi":{},"recent_orders":[],"sales_daily":[],"open_tickets":[],"latest_users":[]}""")
             "/api/auth/me" -> JSONObject("""{"user":{"id":7,"username":"Тестовый профиль","is_admin":true,"requires_pd_consent":false},"csrf_token":"smoke-csrf-token"}""")
-            "/api/store" -> catalog()
+            "/api/store", "/api/store?include_inactive=1" -> catalog()
             "/api/store/cart" -> cartResponse()
             "/api/categories" -> JSONObject("""{"items":[{"slug":"cooked","title":"Варёные колбасы","sausages_count":1,"items":[{"display_name":"Докторская тестовая","slug":"doktorskaya-test"}]}]}""")
             "/api/recipes/doktorskaya-test" -> JSONObject("""{

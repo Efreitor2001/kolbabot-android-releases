@@ -23,49 +23,42 @@ class NativeContentListsTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
 
-    @Test fun recipeSearchFindsFoldedCategoriesAndSlugAndRestoresTheList() {
+    @Test fun recipeSelectorsStayOnThePageAndGlobalSearchFindsAnotherCategory() {
         val api = ContentListsApi(context)
         compose.setContent { KolbaTheme { RecipesScreen(api) } }
-        compose.onNodeWithTag("recipe-doctors").assertExists()
-        compose.onNodeWithTag("recipe-smoked-test").assertDoesNotExist()
-        screenshot("24a-recipe-categories")
-        compose.onNodeWithTag("recipe-category-smoked").performScrollTo().performClick()
-        compose.onNodeWithTag("recipe-doctors").assertDoesNotExist()
-        compose.onNodeWithTag("recipe-smoked-test").assertExists()
-        compose.onNodeWithTag("recipe-category-smoked").performClick()
-        compose.onNodeWithTag("recipe-smoked-test").assertDoesNotExist()
-        screenshot("24b-recipe-categories-folded")
-        input("Поиск по всем рецептам", "  SMOKED-test  ")
-        compose.onNodeWithTag("recipe-smoked-test").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("recipe-category-cooked").assertDoesNotExist()
-        // Search results still have a working +/- control.
-        compose.onNodeWithTag("recipe-category-smoked").performClick()
-        compose.onNodeWithTag("recipe-smoked-test").assertDoesNotExist()
-        compose.onNodeWithTag("recipe-category-smoked").performClick()
-        compose.onNodeWithTag("recipe-smoked-test").assertExists()
-        input("Поиск по всем рецептам", "")
-        compose.onNodeWithTag("recipe-category-cooked").assertExists()
-        compose.onNodeWithTag("recipe-smoked-test").assertDoesNotExist()
-        input("Поиск по всем рецептам", "краковская")
-        screenshot("24-recipe-search")
-        compose.onNodeWithTag("recipe-smoked-test").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Категория").assertTextContains("Варёные колбасы")
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Докторская")
+        compose.waitUntil { api.reads.contains("/api/recipes/doctors") }
+        compose.onNodeWithTag("site-select-Категория").performScrollTo().performClick()
+        compose.onNodeWithTag("site-option-smoked").performClick()
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Краковская")
         compose.waitUntil { api.reads.contains("/api/recipes/smoked-test") }
         compose.onNodeWithText("Калькулятор").assertExists()
+        screenshot("24a-recipe-selectors")
+        input("Поиск по всем рецептам", "  DOCTORS  ")
+        compose.onNodeWithTag("site-select-Категория").assertTextContains("Варёные колбасы")
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Докторская")
+        input("Поиск по всем рецептам", "несуществующий рецепт")
+        compose.onNodeWithText("По вашему запросу ничего не найдено.").assertExists()
+        input("Поиск по всем рецептам", "краковская")
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Краковская")
+        compose.onNodeWithText("Калькулятор").performScrollTo().assertIsDisplayed()
+        screenshot("24-recipe-search")
     }
 
-    @Test fun handbookSearchReadsMaterialsInsideFoldedSections() {
+    @Test fun handbookDropdownsSelectAndRenderTheMaterialOnTheSamePage() {
         val api = ContentListsApi(context)
         compose.setContent { KolbaTheme { KnowledgeScreen(api, initialSection = "handbook") } }
-        compose.onNodeWithTag("handbook-article-meat").assertExists()
-        compose.onNodeWithTag("handbook-article-safe").assertDoesNotExist()
-        screenshot("25a-handbook-sections")
-        input("Поиск", "  ботулизм  ")
-        compose.onNodeWithTag("handbook-section-raw").assertDoesNotExist()
-        compose.onNodeWithTag("handbook-article-safe").performScrollTo().assertIsDisplayed()
-        screenshot("25-handbook-list")
-        compose.onNodeWithTag("handbook-article-safe").performClick()
+        compose.onNodeWithTag("site-select-Раздел").assertTextContains("Сырьё")
+        compose.onNodeWithTag("site-select-Статья").assertTextContains("Мясное сырьё")
+        compose.waitUntil { api.reads.contains("/api/handbook/raw/meat") }
+        compose.onNodeWithTag("site-select-Раздел").performScrollTo().performClick()
+        compose.onNodeWithTag("site-option-safety").performClick()
+        compose.onNodeWithTag("site-select-Статья").assertTextContains("Безопасность продукта")
         compose.waitUntil { api.reads.contains("/api/handbook/safety/safe") }
-        compose.onNodeWithText("Безопасность продукта").assertExists()
+        compose.onNodeWithText("Материал").assertExists()
+        compose.onNodeWithTag("site-select-Раздел").assertExists()
+        screenshot("25-handbook-selectors")
     }
 
     @Test fun compactArticleRowsKeepBadgesAndOpenTheCompleteMaterial() {
@@ -81,54 +74,50 @@ class NativeContentListsTest {
         compose.onNodeWithText("Температура приготовления").assertExists()
     }
 
-    @Test fun faqSearchOpensMatchingAnswersButTheyCanStillBeCollapsed() {
+    @Test fun faqAccordionsExpandIndependentlyInTheSiteOrder() {
         val api = ContentListsApi(context)
         compose.setContent { KolbaTheme { KnowledgeScreen(api, initialSection = "faq") } }
+        compose.onNode(hasSetTextAction()).assertDoesNotExist()
         compose.onNodeWithTag("faq-answer-1").assertDoesNotExist()
         compose.onNodeWithTag("faq-question-1").performScrollTo().performClick()
         compose.onNodeWithTag("faq-answer-1").assertExists()
         compose.onNodeWithTag("faq-question-1").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Развёрнуто"))
-        input("Поиск", "пункт выдачи")
-        compose.onNodeWithTag("faq-question-1").assertDoesNotExist()
+        compose.onNodeWithTag("faq-question-2").performScrollTo().performClick()
         compose.onNodeWithTag("faq-answer-2").assertExists()
+        compose.onNodeWithTag("faq-answer-1").assertExists()
         compose.onNodeWithTag("faq-question-2").performScrollTo().performClick()
         compose.onNodeWithTag("faq-answer-2").assertDoesNotExist()
-        compose.onNodeWithTag("faq-question-2").performClick()
-        compose.onNodeWithTag("faq-answer-2").assertExists()
         screenshot("26-faq-list")
     }
 
-    @Test fun customIngredientRowsKeepValuesWhenCollapsedAndRevealInvalidRows() {
+    @Test fun customIngredientRowsStayVisibleAndRejectIncompleteValues() {
         val api = ContentListsApi(context)
         compose.setContent { KolbaTheme { CustomCalculatorScreen(api) } }
-        input("Название", "Свинина")
-        input("Количество на 1 кг", "800")
-        input("Цена за 1 кг, ₽", "500")
+        fun field(row: Int, label: String) = compose.onNode(hasSetTextAction() and hasText(label) and hasAnyAncestor(hasTestTag("custom-ingredient-$row")))
+        field(1, "Название").performScrollTo().performTextReplacement("Свинина")
+        field(1, "Количество на 1 кг").performScrollTo().performTextReplacement("800")
+        field(1, "Цена за 1 кг, ₽").performScrollTo().performTextReplacement("500")
         compose.onNodeWithText("+ Добавить").performScrollTo().performClick()
-        input("Название", "Вода")
-        input("Количество на 1 кг", "200")
-        compose.onNode(hasText("мл") and hasClickAction()).performScrollTo().performClick()
-        input("Цена за 1 л, ₽", "0")
-        compose.onNodeWithTag("custom-ingredient-1").performScrollTo().performClick()
-        compose.onNode(hasSetTextAction() and hasText("Название")).assertTextContains("Свинина")
-        compose.onNode(hasSetTextAction() and hasText("Количество на 1 кг")).assertTextContains("800")
-        compose.onNode(hasSetTextAction() and hasText("Цена за 1 кг, ₽")).assertTextContains("500")
-        input("Количество на 1 кг", "")
-        compose.onNodeWithTag("custom-ingredient-2").performScrollTo().performClick()
+        field(2, "Название").performScrollTo().performTextReplacement("Вода")
+        field(2, "Количество на 1 кг").performScrollTo().performTextReplacement("200")
+        field(2, "Цена за 1 кг, ₽").performScrollTo().performTextReplacement("0")
+        field(1, "Название").assertTextContains("Свинина")
+        field(1, "Количество на 1 кг").assertTextContains("800")
+        field(1, "Цена за 1 кг, ₽").assertTextContains("500")
+        field(1, "Количество на 1 кг").performScrollTo().performTextReplacement("")
         compose.onNodeWithText("Рассчитать состав").performScrollTo().performClick()
-        compose.onNodeWithTag("custom-ingredient-1").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Развёрнуто"))
+        compose.onNodeWithText("Проверьте количество и цену ингредиента 1.").assertExists()
         compose.runOnIdle { assertEquals(0, api.calculations.size) }
-        input("Количество на 1 кг", "800")
-        compose.onNodeWithTag("custom-ingredient-1").performScrollTo().performClick()
+        field(1, "Количество на 1 кг").performScrollTo().performTextReplacement("800")
         screenshot("27-custom-ingredient-list")
         compose.onNodeWithText("Рассчитать состав").performScrollTo().performClick()
         compose.waitUntil { api.calculations.size == 1 }
         val request = api.calculations.single()
         assertEquals(1.0, request.getDouble("weight_kg"), 0.0)
-        assertEquals(listOf("Свинина | 800.0 г | 500.0", "Вода | 200.0 мл | 0.0"),
+        assertEquals(listOf("Свинина | 800.0 г | 500.0", "Вода | 200.0 г | 0.0"),
             request.getJSONArray("lines").let { lines -> (0 until lines.length()).map(lines::getString) })
         compose.onNodeWithText("Результат на 1 кг").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Сохранить или отправить PDF").assertExists()
+        compose.onNodeWithText("Распечатать PDF").assertExists()
     }
 
     private fun input(label: String, value: String) {
@@ -155,6 +144,7 @@ private class ContentListsApi(context: Context) : ApiClient(context, "https://co
                 {"slug":"cooked","title":"Варёные колбасы","sausages_count":1,"items":[{"slug":"doctors","display_name":"Докторская"}]},
                 {"slug":"smoked","title":"Полукопчёные колбасы","sausages_count":1,"items":[{"slug":"smoked-test","display_name":"Краковская"}]}
             ]}""")
+            "/api/recipes/doctors" -> JSONObject("""{"slug":"doctors","display_name":"Докторская","recipe_text":"Подготовьте ингредиенты.","ingredients":[]}""")
             "/api/recipes/smoked-test" -> JSONObject("""{"slug":"smoked-test","display_name":"Краковская","category_name":"Полукопчёные колбасы","recipe_text":"Подготовьте ингредиенты.","recipe_photo_url":"","ingredients":[]}""")
             "/api/articles" -> JSONObject("""{"items":[
                 {"id":10,"title":"Температура приготовления","excerpt":"Практические рекомендации по технологии приготовления домашней колбасы и контролю температуры внутри продукта.","is_premium":true,"is_new":true,"likes":8,"comments_count":3},
@@ -166,6 +156,7 @@ private class ContentListsApi(context: Context) : ApiClient(context, "https://co
                 {"key":"raw","title":"Сырьё","articles":[{"key":"meat","title":"Мясное сырьё","text":"Выбор мяса"}]},
                 {"key":"safety","title":"Безопасность","articles":[{"key":"safe","title":"Безопасность продукта","text":"Ботулизм и меры предупреждения"}]}
             ]}""")
+            "/api/handbook/raw/meat" -> JSONObject("""{"title":"Мясное сырьё","text":"Выбор мяса","link":""}""")
             "/api/handbook/safety/safe" -> JSONObject("""{"title":"Безопасность продукта","text":"Ботулизм и меры предупреждения","link":""}""")
             "/api/faq" -> JSONObject("""{"items":[
                 {"id":1,"question":"Как выбрать рецепт?","answer":"Откройте раздел рецептов."},

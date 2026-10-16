@@ -21,21 +21,27 @@ class AdminCommerceListsTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
 
-    @Test fun cartSearchFindsHiddenItemsAndDetailsOpenOnlyOnRequest() {
+    @Test fun customerCartOpensItsProductListWithoutRawJsonOrANestedAccordion() {
         val api = CommerceListsApi(context)
         compose.setContent { KolbaTheme { AdminCommerceScreen(api, "carts") {} } }
-        compose.onNodeWithTag("admin-entry-cart-7").assertExists()
-        compose.onNodeWithText("reviewer@example.invalid").assertDoesNotExist()
-        compose.onNode(hasSetTextAction()).performScrollTo().performTextReplacement("Соль нитритная")
-        compose.onNodeWithTag("admin-entry-cart-7").assertExists()
-        compose.onNodeWithText("Состав корзины").assertDoesNotExist()
+        compose.onNodeWithText("Корзин: 1").assertExists()
+        compose.onNodeWithTag("admin-entry-cart-7").assertTextContains("reviewer@example.invalid", substring = true)
+        compose.onNode(hasSetTextAction()).assertDoesNotExist()
+        compose.onNodeWithText("Соль нитритная · 100 г").assertDoesNotExist()
         screenshot("29-admin-cart-list")
         compose.onNodeWithTag("admin-entry-cart-7").performScrollTo().performClick()
-        compose.onNodeWithText("reviewer@example.invalid").assertExists()
-        val itemText = hasText("Соль нитритная") and !hasSetTextAction()
-        compose.onAllNodes(itemText).assertCountEquals(0)
-        compose.onNodeWithTag("admin-entry-cart-items-7").performScrollTo().performClick()
-        assertTrue(compose.onAllNodes(itemText).fetchSemanticsNodes().isNotEmpty())
+        compose.onNodeWithTag("admin-entry-cart-items-7").assertDoesNotExist()
+        compose.onNodeWithText("Обновлена: 16.10.2026 12:30 МСК").assertExists()
+        compose.onNodeWithText("Соль нитритная · 100 г").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Соль нитритная · 500 г").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2 шт. × ${money(5000)} — ${money(10000)}").assertExists()
+        compose.onNodeWithText("1 шт. × ${money(18000)} — ${money(18000)}").assertExists()
+        compose.onNodeWithText("Итого: ${money(28000)}").assertExists()
+        compose.onNodeWithText("Товар скрыт").assertExists()
+        listOf("product_id", "photo_path", "user_is_active", "variant_group", "debug_metadata", "private-system-sentinel", "updated_at", "price_kopecks", "is_active").forEach {
+            compose.onNodeWithText(it, substring = true).assertDoesNotExist()
+        }
+        screenshot("29b-admin-cart-readable-items")
         assertTrue(api.writes.isEmpty())
     }
 
@@ -90,7 +96,14 @@ private class CommerceListsApi(context: Context) : ApiClient(context, "https://c
     private var deleted = false
     private var retried = false
     override suspend fun get(path: String): JSONObject = when (path) {
-        "/api/admin/store/carts?limit=500" -> JSONObject("""{"summary":{"carts_count":1,"positions_count":1,"items_quantity":2,"total_kopecks":10000,"average_kopecks":10000},"items":[{"user_id":7,"username":"Покупатель","email":"reviewer@example.invalid","positions_count":1,"items_quantity":2,"total_kopecks":10000,"total_weight_grams":200,"items":[{"product_id":42,"title":"Соль нитритная","quantity":2,"price_kopecks":5000,"amount_kopecks":10000,"weight_grams":100,"is_active":true}]}]}""")
+        "/api/admin/store/carts?limit=500" -> JSONObject("""{
+          "summary":{"carts_count":1,"positions_count":2,"items_quantity":3,"total_kopecks":28000,"average_kopecks":28000},
+          "items":[{"user_id":7,"username":"Покупатель","email":"reviewer@example.invalid","user_is_active":true,
+            "updated_at":"2026-10-16 12:30:00","positions_count":2,"items_quantity":3,"total_kopecks":28000,"total_weight_grams":700,
+            "debug_metadata":{"source":"private-system-sentinel"},"items":[
+              {"product_id":42,"title":"Соль нитритная","variant_label":"100 г","variant_group":"nitrite-salt","quantity":2,"price_kopecks":5000,"amount_kopecks":10000,"weight_grams":100,"is_active":true,"photo_path":"private-system-sentinel"},
+              {"product_id":43,"title":"Соль нитритная","variant_label":"500 г","variant_group":"nitrite-salt","quantity":1,"price_kopecks":18000,"amount_kopecks":18000,"weight_grams":500,"is_active":false,"variant":{"label":"500 г","metadata":{"debug":"private-system-sentinel"}}}
+            ]}]}""")
         "/api/admin/store/reviews" -> JSONObject().put("items", if (deleted) JSONArray() else JSONArray().put(JSONObject()
             .put("id", 8).put("product_id", 42).put("product_title", "Соль нитритная").put("user_id", 7)
             .put("user_nickname", "Покупатель").put("rating", 5).put("review_text", REVIEW).put("created_at", "2026-10-15")))

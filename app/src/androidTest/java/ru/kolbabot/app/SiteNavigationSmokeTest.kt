@@ -135,6 +135,7 @@ private class NavigationFakeApi(context: Context, id: Long = 0, admin: Boolean =
     override suspend fun get(path: String): JSONObject {
         reads.add(path)
         return when (path) {
+            "/api/auth/google/config", "/api/auth/vk/config" -> JSONObject().put("enabled", false)
             "/api/auth/me" -> {
                 authGate?.await()
                 JSONObject().put("user", if (userId > 0) JSONObject().put("id", userId).put("username", "Навигационный тест").put("is_admin", serverAdmin) else JSONObject.NULL)

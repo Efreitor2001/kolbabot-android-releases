@@ -18,7 +18,10 @@ import org.junit.runner.RunWith
 class GuestCartSmokeTest {
     @get:Rule val compose = createComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
-    @Before @After fun clear() { context.getSharedPreferences("guest_cart", Context.MODE_PRIVATE).edit().clear().commit() }
+    @Before @After fun clear() {
+        context.getSharedPreferences("guest_cart", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("store_checkout", Context.MODE_PRIVATE).edit().clear().commit()
+    }
 
     @Test fun guestCanBuildCartAndLoginMergesItOnlyOnce() {
         val api = GuestApi(context)
@@ -27,7 +30,7 @@ class GuestCartSmokeTest {
         compose.onNodeWithText("В корзину").performScrollTo().performClick()
         compose.onNodeWithText("Товар добавлен в корзину").assertExists()
         assertEquals(0, api.privateReads)
-        compose.onNodeWithText("Корзина", substring = false).performScrollTo().performClick()
+        compose.onNode(hasText("Корзина") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("1 шт.").assertExists()
         compose.onNodeWithText("+").performScrollTo().performClick()
         compose.onNodeWithText("2 шт.").assertExists()
@@ -39,7 +42,11 @@ class GuestCartSmokeTest {
         compose.onNodeWithText("Обновить корзину").performScrollTo().performClick()
         compose.onNodeWithText("5 шт.").assertExists()
         assertEquals(1, api.writes)
-        compose.onNodeWithText("Оформить заказ").performScrollTo().assertIsEnabled()
+        compose.onNodeWithTag("storeInlineCart").assertExists()
+        compose.onNode(hasSetTextAction() and hasText("ФИО")).performScrollTo().assertExists()
+        // Checkout is already in the cart; submitting still requires customer,
+        // delivery and consent fields instead of an intermediate navigation step.
+        compose.onNodeWithText("Оформить заказ").performScrollTo().assertIsNotEnabled()
     }
 
     private class GuestApi(context: Context) : ApiClient(context) {

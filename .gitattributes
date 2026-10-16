@@ -1,0 +1,4 @@
+# Preserve the pinned assets and website reference hashes on every platform.
+app/src/main/assets/** -text
+app/src/androidTest/assets/** -text
+gradlew text eol=lf

@@ -1,0 +1,120 @@
+@font-face { font-family: Manrope; src: url("/__native_ozon_map__/ozon-manrope.ttf") format("truetype"); font-weight: 400 800; font-display: swap; }
+.ozon-pvz-map-panel {
+  display: grid;
+  gap: 9px;
+  margin: 2px 0;
+}
+
+.ozon-pvz-map-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ozon-pvz-map-panel__title {
+  display: grid;
+  gap: 2px;
+}
+
+.ozon-pvz-map-panel__title strong {
+  font-size: 15px;
+}
+
+.ozon-pvz-map-panel__title span,
+.ozon-pvz-map-status {
+  color: var(--muted, #6b7280);
+  font-size: 12px;
+}
+
+.ozon-pvz-map-location {
+  color: var(--text, #1f2937);
+  padding: 7px 11px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ozon-pvz-map-location:hover {
+  border-color: rgba(37, 99, 235, 0.65);
+}
+
+.ozon-pvz-map {
+  width: 100%;
+  height: min(44vh, 390px);
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  background: #eef2f7;
+}
+
+.ozon-pvz-map-status {
+  min-height: 18px;
+}
+
+.ozon-pvz-map-status.is-error {
+  color: #b42318;
+}
+
+.ozon-pvz-map-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 9px rgba(15, 23, 42, 0.34);
+  font-family: Manrope, system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.ozon-pvz-map-marker:hover,
+.ozon-pvz-map-marker:focus-visible {
+  outline: none;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.42);
+  transform: scale(1.08);
+}
+
+.ozon-pvz-map-marker.is-cluster {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1264e5;
+  color: #fff;
+  font-size: 12px;
+}
+
+.ozon-pvz-map-marker.is-point {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #1264e5;
+  color: #fff;
+}
+
+.ozon-pvz-map-marker.is-point::after {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+}
+
+.ozon-pvz-map .maplibregl-ctrl-attrib {
+  font-size: 9px;
+}
+
+/* The native dialog owns the title, search and result list. */
+:root { --muted: #6B7280; }
+html, body, #ozonPvzDialog { margin: 0; padding: 0; width: 100%; height: 100%; border: 0; max-width: none; max-height: none; background: transparent; color: #2C2D30; font-family: Manrope, system-ui, sans-serif; }
+.ozon-pvz-map-panel { display: flex; flex-direction: column; height: 100%; margin: 0; gap: 8px; }
+.ozon-pvz-map { flex: 1; height: auto; min-height: 100px; box-sizing: border-box; }
+.ozon-pvz-map-status { flex: 0 0 auto; padding: 0 2px 2px; }

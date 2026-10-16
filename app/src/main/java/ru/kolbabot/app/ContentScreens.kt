@@ -13,6 +13,8 @@ import android.text.style.URLSpan
 import android.view.View
 import android.widget.TextView
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -25,11 +27,13 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.res.ResourcesCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -49,55 +53,40 @@ private fun contentFailure(error: Exception): String { if (error is Cancellation
 fun RecipesScreen(api: ApiClient, onOpenProduct: ((Long) -> Unit)? = null) {
     var selected by rememberSaveable { mutableStateOf("") }
     var search by rememberSaveable { mutableStateOf("") }
-    var custom by rememberSaveable { mutableStateOf(false) }
-    var expandedCategory by rememberSaveable { mutableStateOf<String?>(null) }
-    if (custom) {
-        BackHandler { custom = false }
-        CustomCalculatorContent(api, onBack = { custom = false })
-    } else if (selected.isNotEmpty()) {
-        BackHandler { selected = "" }
-        RecipeDetail(api, selected, onOpenProduct) { selected = "" }
-    } else {
-        RemotePage("Готовые рецепты", api, "/api/categories") { data, _ ->
+    var categorySlug by rememberSaveable { mutableStateOf("") }
+        RemotePage("Готовые рецепты", api, "/api/categories", subtitle = "Выберите сорт, пересчитайте ингредиенты под свой объём и соберите заказ.", eyebrow = "Рецептуры") { data, _ ->
+            val query = search.trim()
+            val categories = data.items("items").map { category -> category to category.items("items").filter {
+                query.isBlank() || (it.optString("display_name") + " " + it.optString("slug") + " " + category.optString("title")).contains(query, true)
+            } }.filter { it.second.isNotEmpty() }
+            val category = categories.firstOrNull { it.first.optString("slug") == categorySlug } ?: categories.firstOrNull()
+            val recipes = category?.second.orEmpty()
+            val recipe = recipes.firstOrNull { it.optString("slug") == selected } ?: recipes.firstOrNull()
+            val recipeSlug = recipe?.optString("slug").orEmpty()
             SectionCard("Что готовим?") {
                 OutlinedTextField(search, { search = it }, label = { Text("Поиск по всем рецептам") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                TextButton(onClick = { custom = true }) { Text("Свой расчёт") }
+                SiteSelect("Категория", category?.first?.optString("slug").orEmpty(), categories.map { it.first.optString("slug") to it.first.optString("title") },
+                    { categorySlug = it; selected = "" })
+                SiteSelect("Сорт", recipeSlug, recipes.map { it.optString("slug") to it.optString("display_name") }, { selected = it })
             }
-            val categories = data.items("items")
-            val query = search.trim()
-            val openCategory = expandedCategory ?: categories.firstOrNull()?.optString("slug")
-            var foldedSearchGroups by rememberSaveable(query) { mutableStateOf(listOf<String>()) }
-            var found = false
-            categories.forEach { category ->
-                val recipes = category.items("items").filter {
-                    query.isBlank() || (it.optString("display_name") + " " + it.optString("slug") + " " + category.optString("title")).contains(query, true)
-                }
-                if (recipes.isNotEmpty()) {
-                    found = true
-                    val categorySlug = category.optString("slug")
-                    // Search reads the complete API catalogue; folding a category never filters it out.
-                    SiteDisclosure(category.optString("title"), expanded = if (query.isNotBlank()) categorySlug !in foldedSearchGroups else openCategory == categorySlug,
-                        onToggle = {
-                            if (query.isNotBlank()) foldedSearchGroups = if (categorySlug in foldedSearchGroups) foldedSearchGroups - categorySlug else foldedSearchGroups + categorySlug
-                            else expandedCategory = if (openCategory == categorySlug) "" else categorySlug
-                        },
-                        count = recipes.size, modifier = Modifier.testTag("recipe-category-$categorySlug")) {
-                        recipes.forEachIndexed { index, recipe ->
-                            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                            SiteListRow(recipe.optString("display_name"), onClick = { selected = recipe.optString("slug") },
-                                framed = false, modifier = Modifier.testTag("recipe-${recipe.optString("slug")}"))
-                        }
-                    }
-                }
-            }
-            if (!found) Text(if (categories.isEmpty()) "Рецепты пока не опубликованы." else "По вашему запросу ничего не найдено.")
+            if (recipeSlug.isNotBlank()) key(recipeSlug) { RecipeDetail(api, recipeSlug, onOpenProduct) }
+            else Text(if (query.isBlank()) "Рецепты пока не опубликованы." else "По вашему запросу ничего не найдено.")
         }
-    }
 }
 
 @Composable
-private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) -> Unit)?, onBack: () -> Unit) {
-    RemotePage("Рецепт", api, "/api/recipes/${contentPath(slug)}", onBack) { recipe, _ ->
+private fun ColumnScope.RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) -> Unit)?) {
+    var data by remember(slug) { mutableStateOf<JSONObject?>(null) }
+    var loadError by remember(slug) { mutableStateOf("") }
+    var reload by remember(slug) { mutableIntStateOf(0) }
+    LaunchedEffect(api, slug, reload) {
+        loadError = ""
+        try { data = api.get("/api/recipes/${contentPath(slug)}") }
+        catch (failure: Exception) { loadError = contentFailure(failure) }
+    }
+    if (data == null && loadError.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (loadError.isNotBlank()) { ErrorMessage(loadError); OutlinedButton(onClick = { reload++ }) { Text("Повторить") } }
+    data?.let { recipe ->
         val scope = rememberCoroutineScope()
         val context = LocalContext.current
         var weight by rememberSaveable(slug) { mutableStateOf("1") }
@@ -112,33 +101,23 @@ private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) ->
             }
         } }
         val title = recipe.optString("display_name", "Рецепт")
+        SectionCard {
         Text(title, style = MaterialTheme.typography.headlineMedium)
-        Text(recipe.optString("category_name"), style = MaterialTheme.typography.labelLarge)
-        if (recipe.optString("recipe_photo_url").isNotBlank()) NetworkImage(contentUrl(api, recipe.optString("recipe_photo_url")), title, Modifier.fillMaxWidth().height(220.dp))
-        var showPreparation by rememberSaveable(slug) { mutableStateOf(false) }
-        SiteDisclosure("Приготовление", expanded = showPreparation, onToggle = { showPreparation = !showPreparation },
-            summary = if (showPreparation) "" else plainText(recipe.optString("recipe_text")).take(160),
-            bodyPadding = 14.dp, bodySpacing = 10.dp) {
-            val text = recipe.optString("recipe_text")
-            if (text.isBlank()) Text("Описание приготовления пока не добавлено.") else ContentHtml(api, text)
-        }
+        if (recipe.optString("recipe_photo_url").isNotBlank()) NetworkImage(contentUrl(api, recipe.optString("recipe_photo_url")), title,
+            Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, SiteColors.CustomerBorder, RoundedCornerShape(12.dp)))
+        val text = recipe.optString("recipe_text")
+        if (text.isBlank()) Text("Описание приготовления пока не добавлено.") else ContentHtml(api, text)
         val ingredients = recipe.items("ingredients")
-        if (ingredients.isNotEmpty()) SectionCard("Состав на 1 кг") {
+        if (ingredients.isNotEmpty()) {
+            Text("Состав на 1 кг", style = MaterialTheme.typography.titleMedium)
             ingredients.forEach { ingredient ->
                 key(ingredient.optString("full_name")) {
                     val options = ingredient.items("options")
                     Text(ingredient.optString("full_name"), style = MaterialTheme.typography.titleSmall)
                     if (options.isNotEmpty()) {
-                        var expanded by remember { mutableStateOf(false) }
                         val selected = options.firstOrNull { it.optString("option_key") == choices[ingredient.optString("full_name")] } ?: options.first()
-                        Box {
-                            OutlinedButton(onClick = { expanded = true }, enabled = !busy) { Text(selected.optString("full_name") + " ▾") }
-                            DropdownMenu(expanded, { expanded = false }) {
-                                options.forEach { option ->
-                                    DropdownMenuItem(text = { Text(option.optString("full_name")) }, onClick = {
-                                        expanded = false
+                        SiteSelect("Вариант ингредиента", selected.optString("option_key"), options.map { it.optString("option_key") to it.optString("full_name") }, enabled = !busy, onSelected = { nextKey ->
                                         val ingredientName = ingredient.optString("full_name")
-                                        val nextKey = option.optString("option_key")
                                         if (nextKey != selected.optString("option_key")) scope.launch {
                                             busy = true; error = ""; message = ""
                                             val nextChoices = JSONObject(choices.toMap()).put(ingredientName, nextKey)
@@ -155,10 +134,7 @@ private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) ->
                                                 }
                                             } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
                                         }
-                                    })
-                                }
-                            }
-                        }
+                        })
                         Text(selected.optString("value") + if (selected.optBoolean("is_numeric")) " ${unitLabel(selected.optString("amount_unit"))}" else "")
                         if (selected.optLong("product_id") > 0 && onOpenProduct != null) TextButton(enabled = !busy, onClick = { onOpenProduct(selected.optLong("product_id")) }) { Text("Открыть товар в магазине") }
                     } else Text(ingredient.optString("value") + if (ingredient.optBoolean("is_numeric")) " ${unitLabel(ingredient.optString("amount_unit"))}" else "")
@@ -166,6 +142,7 @@ private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) ->
                     HorizontalDivider()
                 }
             }
+        }
         }
         SectionCard("Калькулятор") {
             OutlinedTextField(weight, { weight = it; calculation = null; calculatedRequest = null }, label = { Text("Вес партии (кг)") }, supportingText = { Text("Целое число от 1 кг") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
@@ -179,6 +156,7 @@ private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) ->
                     } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
                 }
             }) { Text(if (busy) "Выполняется…" else "Рассчитать") }
+            if (calculation == null) Text("Сначала выберите сорт, затем нажмите «Рассчитать».", color = SiteColors.Muted)
         }
         if (error.isNotBlank()) ErrorMessage(error)
         if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
@@ -218,7 +196,7 @@ private fun RecipeDetail(api: ApiClient, slug: String, onOpenProduct: ((Long) ->
                     try { calculatedRequest?.let { sharePdf(context, api.download("/api/print/recipe-pdf", it), "recipe.pdf") } }
                     catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
                 }
-            }) { Text("Сохранить или отправить PDF") }
+            }) { Text("Распечатать PDF") }
         }
     }
 }
@@ -304,35 +282,24 @@ private fun CustomCalculatorContent(api: ApiClient, onBack: (() -> Unit)? = null
     var lastRequest by remember { mutableStateOf<JSONObject?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    var expandedIngredient by rememberSaveable { mutableStateOf(rows.first().id) }
     Page("Свой состав", "Соберите собственную рецептуру и сразу увидьте вес ингредиентов и себестоимость.", onBack) {
         SectionCard("Ингредиенты на 1 кг") {
             OutlinedTextField(weight, { weight = it; result = null }, label = { Text("Вес партии (кг)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
             Text("Название · граммы · цена", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         rows.forEachIndexed { index, ingredient ->
             key(ingredient.id) {
                 fun update(value: CustomIngredient) { val position = rows.indexOfFirst { it.id == ingredient.id }; if (position >= 0) rows[position] = value; result = null }
-                val summary = listOfNotNull(
-                    ingredient.quantity.takeIf { it.isNotBlank() }?.let { "$it ${ingredient.unit}" },
-                    ingredient.price.takeIf { it.isNotBlank() }?.let { "$it ₽/${if (ingredient.unit in listOf("мл", "л")) "л" else "кг"}" }
-                ).joinToString(" · ")
-                SiteDisclosure(ingredient.name.ifBlank { "Ингредиент ${index + 1}" },
-                    expanded = expandedIngredient == ingredient.id,
-                    onToggle = { expandedIngredient = if (expandedIngredient == ingredient.id) "" else ingredient.id },
-                    summary = summary, accent = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.testTag("custom-ingredient-${index + 1}"), bodyPadding = 12.dp, bodySpacing = 10.dp) {
+                Column(Modifier.testTag("custom-ingredient-${index + 1}"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(ingredient.name, { update(ingredient.copy(name = it)) }, label = { Text("Название") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(ingredient.quantity, { update(ingredient.copy(quantity = it)) }, label = { Text("Количество на 1 кг") }, suffix = { Text(ingredient.unit) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("г", "кг", "мл", "л").forEach { unit -> FilterChip(selected = ingredient.unit == unit, onClick = { update(ingredient.copy(unit = unit)) }, enabled = !busy, label = { Text(unit) }) } }
                     OutlinedTextField(ingredient.price, { update(ingredient.copy(price = it)) }, label = { Text("Цена за ${if (ingredient.unit in listOf("мл", "л")) "1 л" else "1 кг"}, ₽") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
                     if (rows.size > 1) TextButton(enabled = !busy, onClick = {
-                        rows.remove(ingredient); expandedIngredient = rows.getOrNull(index.coerceAtMost(rows.lastIndex))?.id ?: ""; result = null
+                        rows.remove(ingredient); result = null
                     }) { Text("Удалить ингредиент") }
                 }
             }
         }
-        OutlinedButton(onClick = { val next = CustomIngredient(); rows.add(next); expandedIngredient = next.id; result = null }, enabled = !busy && rows.size < 100, modifier = Modifier.fillMaxWidth()) { Text("+ Добавить") }
+        OutlinedButton(onClick = { rows.add(CustomIngredient()); result = null }, enabled = !busy && rows.size < 100, modifier = Modifier.fillMaxWidth()) { Text("+ Добавить") }
         if (error.isNotBlank()) ErrorMessage(error)
         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
             scope.launch {
@@ -341,11 +308,9 @@ private fun CustomCalculatorContent(api: ApiClient, onBack: (() -> Unit)? = null
                     val kg = weight.replace(',', '.').toDoubleOrNull()
                     require(kg != null && kg.isFinite() && kg > 0) { "Укажите вес партии больше нуля." }
                     val lines = rows.mapIndexed { i, item ->
-                        if (item.name.isBlank() || item.name.contains('|') || item.name.contains('\n')) expandedIngredient = item.id
                         require(item.name.isNotBlank() && !item.name.contains('|') && !item.name.contains('\n')) { "Укажите название ингредиента ${i + 1} без символа | и переноса строки." }
                         val quantity = item.quantity.replace(',', '.').toDoubleOrNull()
                         val price = item.price.replace(',', '.').toDoubleOrNull()
-                        if (quantity == null || !quantity.isFinite() || quantity <= 0 || price == null || !price.isFinite() || price < 0) expandedIngredient = item.id
                         require(quantity != null && quantity.isFinite() && quantity > 0 && price != null && price.isFinite() && price >= 0) { "Проверьте количество и цену ингредиента ${i + 1}." }
                         "${item.name.trim()} | $quantity ${item.unit} | $price"
                     }
@@ -355,6 +320,8 @@ private fun CustomCalculatorContent(api: ApiClient, onBack: (() -> Unit)? = null
                 } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
             }
         }) { Text(if (busy) "Выполняется…" else "Рассчитать состав") }
+        }
+        if (result == null) SectionCard("Итоговый расчёт") { Text("Добавьте ингредиенты и нажмите «Рассчитать состав».", color = SiteColors.Muted) }
         result?.let { calculation ->
             CalculationResult(calculation)
             OutlinedButton(enabled = !busy, onClick = {
@@ -363,7 +330,7 @@ private fun CustomCalculatorContent(api: ApiClient, onBack: (() -> Unit)? = null
                     try { lastRequest?.let { sharePdf(context, api.download("/api/print/custom-pdf", it), "custom-recipe.pdf") } }
                     catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
                 }
-            }, modifier = Modifier.fillMaxWidth()) { Text("Сохранить или отправить PDF") }
+            }, modifier = Modifier.fillMaxWidth()) { Text("Распечатать PDF") }
         }
     }
 }
@@ -378,8 +345,6 @@ fun KnowledgeScreen(api: ApiClient, onOpenAccount: (() -> Unit)? = null,
     var handbookSection by rememberSaveable { mutableStateOf("") }
     var handbookArticle by rememberSaveable { mutableStateOf("") }
     var equipmentId by rememberSaveable { mutableStateOf(0) }
-    var search by rememberSaveable { mutableStateOf("") }
-    var expandedHandbookSection by rememberSaveable { mutableStateOf<String?>(null) }
     val currentSectionChanged by rememberUpdatedState(onSectionChanged)
     LaunchedEffect(section) {
         currentSectionChanged(when (section) {
@@ -398,74 +363,67 @@ fun KnowledgeScreen(api: ApiClient, onOpenAccount: (() -> Unit)? = null,
     LaunchedEffect(initialSection) {
         val requested = mapOf("articles" to "Статьи", "handbook" to "Справочник", "equipment" to "Оборудование", "faq" to "Вопросы")[initialSection]
         if (requested != null) {
-            section = requested; search = ""
+            section = requested
             if (initialArticleId <= 0) articleId = 0
             handbookArticle = ""; equipmentId = 0; onSectionOpened()
         }
     }
     when {
         articleId > 0 -> { BackHandler { articleId = 0 }; ArticleDetail(api, articleId, onOpenAccount) { articleId = 0 } }
-        handbookArticle.isNotBlank() -> { BackHandler { handbookArticle = "" }; HandbookDetail(api, handbookSection, handbookArticle) { handbookArticle = "" } }
         equipmentId > 0 -> { BackHandler { equipmentId = 0 }; EquipmentDetail(api, equipmentId) { equipmentId = 0 } }
         else -> {
             val path = when (section) { "Справочник" -> "/api/handbook"; "Оборудование" -> "/api/equipment"; "Вопросы" -> "/api/faq"; else -> "/api/articles" }
             val heading = when (section) { "Справочник" -> "Справочник технолога"; "Вопросы" -> "Частые вопросы"; else -> section }
-            RemotePage(heading, api, path) { data, _ ->
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Статьи", "Справочник", "Оборудование", "Вопросы").forEach { tab -> FilterChip(selected = section == tab, onClick = { section = tab; search = "" }, label = { Text(if (tab == "Вопросы") "FAQ" else tab) }) }
-                }
-                OutlinedTextField(search, { search = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            val subtitle = when (section) {
+                "Справочник" -> "Короткие ответы по сырью, технологиям, хранению и безопасности."
+                "Вопросы" -> "Коротко отвечаем на то, с чем чаще всего сталкиваются пользователи."
+                "Оборудование" -> "Подборка техники и инвентаря с пояснениями: что действительно пригодится дома."
+                else -> "Практика, технологии и разборы от команды Колбабота."
+            }
+            val eyebrow = when (section) { "Справочник" -> "База знаний"; "Вопросы" -> "Быстрая помощь"; "Оборудование" -> "Инструменты"; else -> "Полезные материалы" }
+            RemotePage(heading, api, path, subtitle = subtitle, eyebrow = eyebrow) { data, _ ->
                 val items = data.items("items")
-                val query = search.trim()
-                var foldedSearchGroups by rememberSaveable(section, query) { mutableStateOf(listOf<String>()) }
-                var found = false
                 when (section) {
                     "Справочник" -> {
-                        Text("Выберите материал", style = MaterialTheme.typography.titleMedium)
-                        val openSection = expandedHandbookSection ?: items.firstOrNull()?.optString("key")
-                        items.forEach { group ->
-                            val articles = group.items("articles").filter { query.isBlank() || (it.optString("title") + " " + it.optString("text") + " " + group.optString("title")).contains(query, true) }
-                            if (articles.isNotEmpty()) {
-                                found = true
-                                val groupKey = group.optString("key")
-                                SiteDisclosure(group.optString("title"), count = articles.size,
-                                    expanded = if (query.isNotBlank()) groupKey !in foldedSearchGroups else openSection == groupKey,
-                                    onToggle = {
-                                        if (query.isNotBlank()) foldedSearchGroups = if (groupKey in foldedSearchGroups) foldedSearchGroups - groupKey else foldedSearchGroups + groupKey
-                                        else expandedHandbookSection = if (openSection == groupKey) "" else groupKey
-                                    }, modifier = Modifier.testTag("handbook-section-$groupKey")) {
-                                    articles.forEachIndexed { index, article ->
-                                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                        SiteListRow(article.optString("title"), framed = false,
-                                            modifier = Modifier.testTag("handbook-article-${article.optString("key")}"),
-                                            onClick = { handbookSection = groupKey; handbookArticle = article.optString("key") })
-                                    }
-                                }
-                            }
+                        val group = items.firstOrNull { it.optString("key") == handbookSection } ?: items.firstOrNull()
+                        val articles = group?.items("articles").orEmpty()
+                        val article = articles.firstOrNull { it.optString("key") == handbookArticle } ?: articles.firstOrNull()
+                        SectionCard("Выберите материал") {
+                            SiteSelect("Раздел", group?.optString("key").orEmpty(), items.map { it.optString("key") to it.optString("title") }, { handbookSection = it; handbookArticle = "" })
+                            SiteSelect("Статья", article?.optString("key").orEmpty(), articles.map { it.optString("key") to it.optString("title") }, { handbookArticle = it })
                         }
+                        if (group != null && article != null) key(group.optString("key"), article.optString("key")) { HandbookDetail(api, group.optString("key"), article.optString("key")) }
                     }
-                    "Вопросы" -> items.filter { query.isBlank() || (it.optString("question") + " " + it.optString("answer")).contains(query, true) }.forEach { faq ->
-                        found = true
+                    "Вопросы" -> items.forEach { faq ->
                         key(faq.optInt("id")) {
-                            var expanded by rememberSaveable(query) { mutableStateOf(query.isNotBlank()) }
+                            var expanded by rememberSaveable { mutableStateOf(false) }
                             SiteDisclosure(faq.optString("question"), expanded = expanded, onToggle = { expanded = !expanded },
                                 modifier = Modifier.testTag("faq-question-${faq.optInt("id")}"), bodyPadding = 14.dp, bodySpacing = 10.dp) {
                                 Column(Modifier.testTag("faq-answer-${faq.optInt("id")}")) { ContentHtml(api, faq.optString("answer")) }
                             }
                         }
                     }
-                    "Оборудование" -> items.filter { query.isBlank() || (it.optString("title") + " " + it.optString("category_name") + " " + it.optString("description")).contains(query, true) }.forEach { item ->
-                        found = true
-                        SiteListRow(item.optString("title"), onClick = { equipmentId = item.optInt("id") },
-                            modifier = Modifier.testTag("equipment-${item.optInt("id")}"),
-                            subtitle = plainText(item.optString("description")),
-                            thumbnail = if (item.optString("photo_url").isNotBlank()) ({
-                                NetworkImage(contentUrl(api, item.optString("photo_url")), item.optString("title"), Modifier.size(80.dp).clip(RoundedCornerShape(10.dp)))
-                            }) else null,
-                            badges = { if (item.optString("category_name").isNotBlank()) SiteListBadge(item.optString("category_name"), MaterialTheme.colorScheme.tertiary) })
+                    "Оборудование" -> SectionCard("Выберите оборудование") {
+                        Text("Нажмите на карточку — откроется описание", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                        val columns = if (LocalConfiguration.current.screenWidthDp <= 420) 1 else 2
+                        items.chunked(columns).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                row.forEach { item ->
+                                    Surface(onClick = { equipmentId = item.optInt("id") }, modifier = Modifier.weight(1f).testTag("equipment-${item.optInt("id")}"),
+                                        shape = RoundedCornerShape(17.dp), color = androidx.compose.ui.graphics.Color.White,
+                                        border = BorderStroke(1.dp, SiteColors.CustomerBorder), shadowElevation = 1.dp) {
+                                        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (item.optString("photo_url").isNotBlank()) NetworkImage(contentUrl(api, item.optString("photo_url")), item.optString("title"), Modifier.fillMaxWidth().aspectRatio(1.6f).clip(RoundedCornerShape(13.dp)))
+                                            Text(item.optString("title"), style = MaterialTheme.typography.titleSmall)
+                                            Text(item.optString("category_name").ifBlank { "Оборудование" }, style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                                        }
+                                    }
+                                }
+                                if (row.size < columns) Spacer(Modifier.weight(1f))
+                            }
+                        }
                     }
-                    else -> items.filter { query.isBlank() || (it.optString("title") + " " + it.optString("excerpt")).contains(query, true) }.forEach { article ->
-                        found = true
+                    else -> items.forEach { article ->
                         val imageUrl = article.optString("card_image_url").ifBlank { article.optString("cover_image_url") }
                         SiteListRow(article.optString("title"), onClick = { articleId = article.optInt("id") },
                             modifier = Modifier.testTag("article-${article.optInt("id")}"),
@@ -480,19 +438,32 @@ fun KnowledgeScreen(api: ApiClient, onOpenAccount: (() -> Unit)? = null,
                             })
                     }
                 }
-                if (!found) Text(if (search.isBlank()) "В этом разделе пока нет материалов." else "По вашему запросу ничего не найдено.")
+                if (items.isEmpty()) Text("В этом разделе пока нет материалов.")
             }
         }
     }
 }
 
 @Composable
-private fun HandbookDetail(api: ApiClient, section: String, article: String, onBack: () -> Unit) {
+private fun ColumnScope.HandbookDetail(api: ApiClient, section: String, article: String) {
     val context = LocalContext.current
-    RemotePage("Справочник", api, "/api/handbook/${contentPath(section)}/${contentPath(article)}", onBack) { data, _ ->
+    var data by remember(section, article) { mutableStateOf<JSONObject?>(null) }
+    var error by remember(section, article) { mutableStateOf("") }
+    var refresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(api, section, article, refresh) {
+        error = ""
+        try { data = api.get("/api/handbook/${contentPath(section)}/${contentPath(article)}") }
+        catch (failure: Exception) { error = contentFailure(failure) }
+    }
+    if (data == null && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+    if (error.isNotBlank()) { ErrorMessage(error); OutlinedButton(onClick = { refresh++ }) { Text("Повторить") } }
+    data?.let { data ->
+      SectionCard {
+        Text("Материал", style = MaterialTheme.typography.labelMedium, color = SiteColors.Muted)
         Text(data.optString("title"), style = MaterialTheme.typography.headlineMedium)
         ContentHtml(api, data.optString("text"))
         if (data.optString("link").isNotBlank()) OutlinedButton(onClick = { openLink(context, contentUrl(api, data.optString("link"))) }) { Text("Открыть ссылку") }
+      }
     }
 }
 
@@ -500,11 +471,14 @@ private fun HandbookDetail(api: ApiClient, section: String, article: String, onB
 private fun EquipmentDetail(api: ApiClient, id: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     RemotePage("Оборудование", api, "/api/equipment/$id", onBack) { item, _ ->
+      SectionCard {
         Text(item.optString("title"), style = MaterialTheme.typography.headlineMedium)
         Text(item.optString("category_name"), style = MaterialTheme.typography.labelLarge)
-        if (item.optString("photo_url").isNotBlank()) NetworkImage(contentUrl(api, item.optString("photo_url")), item.optString("title"), Modifier.fillMaxWidth().height(240.dp))
+        if (item.optString("photo_url").isNotBlank()) NetworkImage(contentUrl(api, item.optString("photo_url")), item.optString("title"),
+            Modifier.fillMaxWidth().height(240.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, SiteColors.CustomerBorder, RoundedCornerShape(12.dp)))
         ContentHtml(api, item.optString("description"))
         if (item.optString("buy_link").isNotBlank()) Button(onClick = { openLink(context, contentUrl(api, item.optString("buy_link"))) }, modifier = Modifier.fillMaxWidth()) { Text(item.optString("buy_label", "Купить")) }
+      }
     }
 }
 
@@ -538,7 +512,9 @@ private fun ArticleDetail(api: ApiClient, articleId: Int, onOpenAccount: (() -> 
                 }
             }) { Text("Удалить") }
         }, dismissButton = { TextButton(enabled = !busy, onClick = { deleteId = 0 }) { Text("Отмена") } })
-        Text(article.optString("title"), style = MaterialTheme.typography.headlineMedium)
+      SectionCard {
+        if (article.optString("cover_image_url").isNotBlank()) NetworkImage(contentUrl(api, article.optString("cover_image_url")), article.optString("title"),
+            Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)))
         Text(article.optString("author_nickname") + " · " + article.optString("published_at").take(10), style = MaterialTheme.typography.bodySmall)
         var shareNotice by remember { mutableStateOf("") }
         val shareUrl = contentUrl(api, "/?article=$articleId#articles")
@@ -556,8 +532,7 @@ private fun ArticleDetail(api: ApiClient, articleId: Int, onOpenAccount: (() -> 
             }) { Text("Скопировать ссылку") }
         }
         if (shareNotice.isNotBlank()) Text(shareNotice, style = MaterialTheme.typography.bodySmall)
-        TextButton(enabled = !busy, onClick = refresh) { Text("Обновить статью и комментарии") }
-        if (article.optString("cover_image_url").isNotBlank()) NetworkImage(contentUrl(api, article.optString("cover_image_url")), article.optString("title"), Modifier.fillMaxWidth().height(220.dp))
+        Text(article.optString("title"), style = MaterialTheme.typography.headlineMedium)
         if (data.optBoolean("premium_locked")) {
             SectionCard("Материал PREMIUM") {
                 Text(plainText(article.optString("excerpt")))
@@ -573,6 +548,22 @@ private fun ArticleDetail(api: ApiClient, articleId: Int, onOpenAccount: (() -> 
                 if (!canInteract) {
                     Text("Войдите в аккаунт в разделе «Кабинет», чтобы оценивать статьи и оставлять комментарии.")
                     if (onOpenAccount != null) TextButton(onClick = onOpenAccount) { Text("Войти в аккаунт") }
+                }
+                if (canInteract) {
+                    if (replyId > 0) Row {
+                        Text("Ответ пользователю $replyName", modifier = Modifier.weight(1f))
+                        TextButton(onClick = { replyId = 0; replyName = "" }) { Text("Отмена") }
+                    }
+                    OutlinedTextField(commentText, { if (it.length <= 5000) commentText = it }, label = { Text("Ваш комментарий") }, minLines = 3, modifier = Modifier.fillMaxWidth(), enabled = !busy)
+                    Button(enabled = !busy && commentText.trim().length >= 2, onClick = {
+                        scope.launch {
+                            busy = true; error = ""
+                            try {
+                                api.post("/api/articles/$articleId/comments", JSONObject().put("text", commentText.trim()).put("parent_comment_id", replyId))
+                                commentText = ""; replyId = 0; replyName = ""; refresh()
+                            } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
+                        }
+                    }) { Text(if (busy) "Отправка…" else "Отправить комментарий") }
                 }
                 val comments = data.items("comments")
                 if (comments.isEmpty()) Text("Комментариев пока нет.")
@@ -608,24 +599,10 @@ private fun ArticleDetail(api: ApiClient, articleId: Int, onOpenAccount: (() -> 
                         HorizontalDivider()
                     }
                 }
-                if (canInteract) {
-                    if (replyId > 0) Row {
-                        Text("Ответ пользователю $replyName", modifier = Modifier.weight(1f))
-                        TextButton(onClick = { replyId = 0; replyName = "" }) { Text("Отмена") }
-                    }
-                    OutlinedTextField(commentText, { if (it.length <= 5000) commentText = it }, label = { Text("Ваш комментарий") }, minLines = 3, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-                    Button(enabled = !busy && commentText.trim().length >= 2, onClick = {
-                        scope.launch {
-                            busy = true; error = ""
-                            try {
-                                api.post("/api/articles/$articleId/comments", JSONObject().put("text", commentText.trim()).put("parent_comment_id", replyId))
-                                commentText = ""; replyId = 0; replyName = ""; refresh()
-                            } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
-                        }
-                    }) { Text(if (busy) "Отправка…" else "Отправить комментарий") }
-                }
+
             }
         }
+      }
     }
 }
 
@@ -644,9 +621,8 @@ fun SupportScreen(api: ApiClient) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
-    RemotePage("Поддержка", api, "/api/support/tickets/my") { data, refresh ->
+    RemotePage("Поддержка", api, "/api/support/tickets/my", subtitle = "Опишите ситуацию своими словами. Ответ появится здесь же, в истории обращений.", eyebrow = "Связь с нами") { data, refresh ->
         SectionCard("Чем помочь?") {
-            Text("Опишите ситуацию своими словами. Ответ появится здесь же, в истории обращений.")
             OutlinedTextField(text, { if (it.length <= 5000) text = it }, label = { Text("Сообщение") }, supportingText = { Text("${text.length}/5000") }, minLines = 4, modifier = Modifier.fillMaxWidth(), enabled = !busy)
             Button(enabled = !busy && text.trim().length >= 5, onClick = {
                 scope.launch {
@@ -658,9 +634,11 @@ fun SupportScreen(api: ApiClient) {
                     } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
                 }
             }) { Text(if (busy) "Отправка…" else "Отправить") }
+            Text("После отправки появится номер обращения.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
             if (error.isNotBlank()) ErrorMessage(error)
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
         }
+        SectionCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Мои обращения", style = MaterialTheme.typography.titleLarge)
             TextButton(enabled = !busy, onClick = refresh) { Text("Обновить") }
@@ -677,6 +655,7 @@ fun SupportScreen(api: ApiClient) {
                     Text(ticket.optString("answer_text"))
                 }
             }
+        }
         }
     }
 }
@@ -700,7 +679,7 @@ private fun ContentHtml(api: ApiClient, source: String) {
         }
     }
     pieces.forEach { (image, text) ->
-        if (image) NetworkImage(contentUrl(api, text), "Иллюстрация", Modifier.fillMaxWidth().height(220.dp))
+        if (image) NetworkImage(contentUrl(api, text), "Иллюстрация", Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(14.dp)))
         else if (text.isNotBlank()) {
             val formatted = remember(text, api.baseUrl) {
                 val html = if (text.contains(Regex("<\\s*(p|div|br|h[1-6]|ul|ol|a|b|strong|em|i|table)\\b", RegexOption.IGNORE_CASE))) text else Html.escapeHtml(text).replace("\n", "<br>")
@@ -715,9 +694,12 @@ private fun ContentHtml(api: ApiClient, source: String) {
             }
             AndroidView(factory = { context -> TextView(context).apply {
                 textSize = 16f
+                typeface = ResourcesCompat.getFont(context, R.font.manrope_regular)
+                includeFontPadding = false
                 setTextIsSelectable(true)
                 movementMethod = LinkMovementMethod.getInstance()
-                setLineSpacing(4f, 1f)
+                // .article-content uses 16px Manrope and line-height: 1.75.
+                setLineSpacing(0f, 1.75f)
             } }, update = { view ->
                 view.text = formatted
                 view.setTextColor(Color.argb((color.alpha * 255).toInt(), (color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()))

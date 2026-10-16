@@ -21,11 +21,40 @@ class NativeContentAdminTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
 
+    @Test fun catalogSaveRetainsAllThreeDropdownSelectionsThroughReload() {
+        val api = CatalogSelectionApi(context)
+        compose.setContent { KolbaTheme { AdminContentScreen(api, "catalog") {} } }
+        compose.waitUntil { api.finishedLoads >= 1 }
+        compose.onNodeWithTag("site-select-Категория").performScrollTo().performClick()
+        compose.onNodeWithTag("site-option-second").performClick()
+        compose.onNodeWithTag("site-select-Категория для сорта").performScrollTo().performClick()
+        compose.onNodeWithTag("site-option-second").performClick()
+        compose.onNodeWithTag("site-select-Сорт").performScrollTo().performClick()
+        compose.onNodeWithTag("site-option-second-b").performClick()
+        compose.onNode(hasSetTextAction() and hasText("Название категории")).performScrollTo().performTextReplacement("Категория после правки")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onAllNodesWithText("Сохранить", substring = false).onFirst().performScrollTo().performClick()
+        compose.waitUntil { api.finishedLoads >= 2 }
+        compose.onNodeWithTag("site-select-Категория").assertTextContains("Категория после правки")
+        compose.onNodeWithTag("site-select-Категория для сорта").assertTextContains("Категория после правки")
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Второй сорт")
+        compose.onNode(hasSetTextAction() and hasText("Название сорта")).performScrollTo().performTextReplacement("Сорт после правки")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onAllNodesWithText("Сохранить", substring = false).onLast().performScrollTo().performClick()
+        compose.waitUntil { api.finishedLoads >= 3 }
+        compose.onNodeWithTag("site-select-Категория").assertTextContains("Категория после правки")
+        compose.onNodeWithTag("site-select-Категория для сорта").assertTextContains("Категория после правки")
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Сорт после правки")
+        assertEquals(listOf("/api/admin/categories/second", "/api/admin/sausages"), api.writes.map { it.first })
+        assertEquals("second", api.writes.last().second.getString("category_slug"))
+        assertEquals("second-b", api.writes.last().second.getString("old_sausage_slug"))
+    }
+
     @Test fun recipeEditorPreservesAlternativesAndProductBindings() {
         val api = ContentAdminFakeApi(context)
         compose.setContent { KolbaTheme { AdminContentScreen(api, "recipes") {} } }
-        compose.onNodeWithTag("admin-entry-content-recipes-cooked").performScrollTo().performClick()
-        compose.onNodeWithText("Рецепт с вариантами").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Категория").assertExists()
+        compose.onNodeWithTag("site-select-Сорт").assertTextContains("Рецепт с вариантами")
         compose.onNodeWithText("Изменить", substring = false).performScrollTo().performClick()
         compose.onAllNodes(hasSetTextAction() and hasText("Количество варианта на 1 кг")).onFirst().performScrollTo().performTextReplacement("650")
         compose.onNodeWithText("Применить к рецепту").performScrollTo().performClick()
@@ -49,8 +78,7 @@ class NativeContentAdminTest {
     @Test fun articleTitleChangeKeepsExistingFormattedBodyAndPublicationFlags() {
         val api = ContentAdminFakeApi(context)
         compose.setContent { KolbaTheme { AdminContentScreen(api, "articles") {} } }
-        compose.onNodeWithTag("admin-entry-content-article-9").performScrollTo().performClick()
-        compose.onNodeWithText("Редактировать").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Статья").assertTextContains("Исходный заголовок")
         compose.onNode(hasSetTextAction() and hasText("Заголовок")).performScrollTo().performTextReplacement("Уточнённый заголовок")
         compose.onNodeWithText("Сохранить статью").performScrollTo().performClick()
         compose.onNodeWithText("Изменения сохранены.").assertExists()
@@ -65,16 +93,14 @@ class NativeContentAdminTest {
     @Test fun faqEditUsesPatchAndDeleteRequiresConfirmation() {
         val api = ContentAdminFakeApi(context)
         compose.setContent { KolbaTheme { AdminContentScreen(api, "faq") {} } }
-        compose.onNodeWithTag("admin-entry-content-faq-4").performScrollTo().performClick()
-        compose.onNodeWithText("Редактировать").performScrollTo().performClick()
+        compose.onNodeWithTag("site-select-Запись FAQ").assertTextContains("Как хранить соль?")
         compose.onNode(hasSetTextAction() and hasText("Вопрос *")).performScrollTo().performTextReplacement("Как хранить специи?")
         compose.onNode(hasSetTextAction() and hasText("Ответ *")).performScrollTo().performTextReplacement("В сухом закрытом шкафу.")
         compose.onNodeWithText("Сохранить", substring = false).performScrollTo().performClick()
-        compose.onNodeWithText("Как хранить специи?").assertExists()
+        compose.onNodeWithTag("site-select-Запись FAQ").assertTextContains("Как хранить специи?")
         val body = api.writes.single { it.first == "PATCH /api/admin/faq/4" }.second
         assertEquals("Как хранить специи?", body.getString("question"))
         assertEquals("В сухом закрытом шкафу.", body.getString("answer"))
-        compose.onNodeWithTag("admin-entry-content-faq-4").performScrollTo().performClick()
         compose.onNodeWithText("Удалить", substring = false).performScrollTo().performClick()
         compose.onNodeWithText("Подтвердите удаление").assertIsDisplayed()
         assertTrue(api.writes.none { it.first.startsWith("DELETE") })
@@ -144,4 +170,34 @@ private class ContentAdminFakeApi(context: Context) : ApiClient(context, "https:
     companion object {
         const val ARTICLE_BODY = "<h2>Подготовка</h2><p>Сохранить <strong>форматирование</strong> и <a href=\"https://example.invalid/guide\">ссылку</a>.</p>"
     }
+}
+
+private class CatalogSelectionApi(context: Context) : ApiClient(context, "https://catalog-selection.invalid") {
+    @Volatile var finishedLoads = 0
+    val writes = CopyOnWriteArrayList<Pair<String, JSONObject>>()
+    private var categoryTitle = "Вторая категория"
+    private var sausageTitle = "Второй сорт"
+    override suspend fun get(path: String): JSONObject {
+        check(path == "/api/admin/bootstrap")
+        // Force an actual loading composition, rather than a synchronous fake masking disposal.
+        kotlinx.coroutines.delay(80)
+        val categories = JSONArray().put(JSONObject().put("slug", "first").put("title", "Первая категория").put("sausages", JSONArray()))
+            .put(JSONObject().put("slug", "second").put("title", categoryTitle).put("sausages", JSONArray()
+                .put(JSONObject().put("slug", "second-a").put("display_name", "Первый сорт"))
+                .put(JSONObject().put("slug", "second-b").put("display_name", sausageTitle))))
+        finishedLoads++
+        return JSONObject().put("categories", categories)
+    }
+    override suspend fun patch(path: String, body: JSONObject, headers: Map<String, String>): JSONObject {
+        when (path) {
+            "/api/admin/categories/second" -> categoryTitle = body.getString("title")
+            "/api/admin/sausages" -> { check(body.getString("old_sausage_slug") == "second-b"); sausageTitle = body.getString("new_display_name") }
+            else -> throw AssertionError("Unexpected PATCH $path")
+        }
+        writes += path to JSONObject(body.toString())
+        return JSONObject().put("ok", true)
+    }
+    override suspend fun post(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected POST $path")
+    override suspend fun put(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected PUT $path")
+    override suspend fun delete(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected DELETE $path")
 }

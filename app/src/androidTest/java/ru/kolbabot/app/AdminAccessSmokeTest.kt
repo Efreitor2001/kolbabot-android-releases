@@ -35,7 +35,7 @@ class AdminAccessSmokeTest {
     @Test fun ordinaryAccountHasNoAdministrativeEntryOrRequests() {
         val api = AccessFakeApi(context, 42, false)
         compose.setContent { KolbaTheme { AccountScreen(api, api.profile()) {} } }
-        compose.onNodeWithText("Личный кабинет").assertExists()
+        compose.onNodeWithText("Рады вас видеть,", substring = true).assertExists()
         compose.waitUntil { api.reads.contains("/api/auth/me") }
         assertNoAdminEntry()
         assertTrue(api.reads.none { it.startsWith("/api/admin/") })
@@ -54,10 +54,10 @@ class AdminAccessSmokeTest {
     @Test fun verifiedAdministratorUsesTheSeparateMenuInsteadOfAccountEntries() {
         val api = AccessFakeApi(context, 7, true)
         compose.setContent { KolbaTheme { AccountScreen(api, api.profile()) {} } }
-        compose.onNodeWithText("Личный кабинет").assertExists()
+        compose.onNodeWithText("Рады вас видеть,", substring = true).assertExists()
         compose.waitUntil { api.reads.contains("/api/auth/me") }
         assertNoAdminEntry()
-        assertTrue(api.reads.all { it == "/api/auth/me" || it == "/api/android/push/config" || it == "/api/store/cart" })
+        assertTrue(api.reads.all { it == "/api/auth/me" || it == "/api/android/push/config" || it == "/api/store/cart" || it == "/api/account/billing" || it == "/api/bootstrap" })
     }
 
     @Test fun rejectedSessionCannotExposeTheCachedProfileOrLoadItsBalance() {
@@ -85,8 +85,8 @@ class AdminAccessSmokeTest {
         val restoration = StateRestorationTester(compose)
         var closed by mutableStateOf(false)
         restoration.setContent { KolbaTheme { if (closed) Text("Обычный кабинет") else AdminScreen(api) { closed = true } } }
-        compose.onNodeWithText("Пользователи", substring = false).performScrollTo().performClick()
-        compose.onNodeWithText("Администратор +").assertExists()
+        compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
+        compose.onNodeWithText("Добавить администратора по логину").assertExists()
         var previousRequests = 0
         var previousIdentityChecks = 0
         // RemotePage also refreshes when its lifecycle observer first receives ON_RESUME.
@@ -114,12 +114,13 @@ class AdminAccessSmokeTest {
         compose.setContent { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
             KolbaTheme { if (closed) Text("Раздел закрыт") else AdminScreen(api) { closed = true } }
         } }
-        compose.onNodeWithText("Пользователи", substring = false).performScrollTo().performClick()
-        compose.waitUntil { api.reads.any { it.startsWith("/api/admin/users?") } }
+        compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
+        compose.onNodeWithTag("admin-user-picker").assertExists()
+        compose.waitUntil(timeoutMillis = 5_000) { api.reads.any { it.startsWith("/api/admin/users?") } }
         compose.runOnIdle { owner.moveTo(Lifecycle.State.CREATED); api.serverAdmin = false }
         compose.runOnIdle { owner.moveTo(Lifecycle.State.RESUMED) }
         compose.onNodeWithText("Раздел закрыт").assertExists()
-        compose.onNodeWithText("Администратор +").assertDoesNotExist()
+        compose.onNodeWithText("Добавить администратора по логину").assertDoesNotExist()
         assertNoAdminEntry()
     }
 
@@ -131,8 +132,8 @@ class AdminAccessSmokeTest {
         compose.setContent { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
             KolbaTheme { if (closed) Text("Раздел закрыт") else AdminScreen(api) { closed = true } }
         } }
-        compose.onNodeWithText("Пользователи", substring = false).performScrollTo().performClick()
-        compose.onNodeWithText("Администратор +").assertExists()
+        compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
+        compose.onNodeWithText("Добавить администратора по логину").assertExists()
         var previousRequests = 0
         compose.runOnIdle {
             previousRequests = api.adminReads.size
@@ -172,6 +173,9 @@ private class AccessFakeApi(context: Context, id: Long, admin: Boolean) : ApiCli
             path == "/api/auth/me" -> if (userId > 0 && !rejectAuth) JSONObject().put("user", profile()) else throw ApiException(401, "Требуется вход")
             path == "/api/android/push/config" -> JSONObject().put("enabled", false).put("project_id", "")
             path == "/api/store/cart" -> JSONObject().put("rewards", JSONObject().put("sausages_kopecks", 0))
+            path == "/api/account/billing" -> JSONObject().put("tier", "none").put("status", "inactive")
+            path == "/api/bootstrap" -> JSONObject().put("payments", JSONObject().put("enabled", false))
+            path == "/api/admin/dashboard" -> { check(serverAdmin); JSONObject() }
             path.startsWith("/api/admin/users?") -> { check(serverAdmin); JSONObject().put("items", JSONArray()) }
             else -> throw AssertionError("Unexpected GET $path")
         }

@@ -9,3 +9,8 @@ keystore.properties
 signing.properties
 app/agconnect-services.json
 captures/
+
+/validation/
+/releases/
+/*.log
+/ci-artifacts/

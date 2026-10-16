@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -26,6 +25,7 @@ import java.util.Locale
     val accountId = user.optLong("id")
     val identity = rememberVerifiedAccount(api, accountId)
     var route by rememberSaveable(accountId) { mutableStateOf("account") }
+    var selectedAccountOrder by rememberSaveable(accountId) { mutableStateOf("") }
     var routeOwner by rememberSaveable { mutableLongStateOf(accountId) }
     LaunchedEffect(accountId) {
         if (routeOwner != accountId) { routeOwner = accountId; route = "account" }
@@ -76,55 +76,54 @@ import java.util.Locale
         })
     }
     when (visibleRoute) {
-        "orders" -> Column { TextButton(onClick = { route = "account" }) { Text("‹ Кабинет") }; Box(Modifier.weight(1f)) { OrdersScreen(api, initialOrderId, onOrderOpened) } }
+        "orders" -> Column { TextButton(onClick = { route = "account" }) { Text("‹ Кабинет") }; Box(Modifier.weight(1f)) { OrdersScreen(api, initialOrderId.ifBlank { selectedAccountOrder }) { selectedAccountOrder = ""; onOrderOpened() } } }
         "support" -> Column { TextButton(onClick = { route = "account" }) { Text("‹ Кабинет") }; Box(Modifier.weight(1f)) { SupportScreen(api) } }
         "notifications" -> NotificationsScreen(api) { route = "account" }
         "subscription" -> SubscriptionScreen(api) { route = "account" }
         "email" -> EmailScreen(api, identity.user!!, onConfirmed = identity.refresh) { route = "account" }
         "connections" -> LinkedAccountsScreen(api, identity.user ?: user, { route = "account" })
-        else -> Page("Личный кабинет") {
-            val current = identity.user!!
-            if (!identity.checked) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (identity.error.isNotBlank()) {
-                ErrorMessage(identity.error)
-                OutlinedButton(onClick = identity.refresh) { Text("Обновить аккаунт") }
-            }
-            SectionCard(current.optString("username", "Ваш аккаунт")) {
-                val email = current.optString("email").takeUnless { it == "null" }.orEmpty()
-                if (email.isNotBlank()) Text(email)
-                Text("Покупки, подписка и колбаски синхронизированы с сайтом.")
-            }
-            ErrorMessage(error)
-            SectionCard("Покупки и доступ") {
-                AccountLink("История заказов", "Статусы, состав и сумма ваших заказов.") { route = "orders" }
-                AccountLink("Ваш доступ", "Статус, оплата и автопродление") { route = "subscription" }
+        else -> AccountSubscriptionPage(api,
+            title = "Рады вас видеть, ${identity.user!!.optString("first_name").takeUnless { it.isBlank() || it == "null" } ?: identity.user!!.optString("username", "пользователь")}",
+            subtitle = "Профиль, подписка, заказы и способы входа — без лишней технической информации.",
+            profile = {
+                val current = identity.user!!
+                ErrorMessage(identity.error); ErrorMessage(error)
+                AccountProfileDetails(api, current) {
+                    val email = current.optString("email").takeUnless { it == "null" }.orEmpty()
+                    if (email.isBlank() || !current.optBoolean("email_verified")) EmailScreen(api, current, onConfirmed = identity.refresh, embedded = true) {}
+                    val referral = current.optJSONObject("referral_program")
+                    if (referral != null && referral.optBoolean("is_active") && referral.optString("registration_path").isNotBlank()) {
+                        Text("Приглашено: ${referral.optInt("invited_count")} · Начислено: ${money(referral.optLong("earned_kopecks"))}")
+                        Text("Ваш код: ${referral.optString("code")}")
+                        OutlinedButton(onClick = {
+                            val link = api.baseUrl + referral.optString("registration_path")
+                            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Присоединяйтесь к Колбаботу: $link") }, "Пригласить друга"))
+                        }) { Text("Поделиться приглашением") }
+                    }
+                }
+            }, afterBilling = {
+                var connectionsExpanded by rememberSaveable { mutableStateOf(false) }
+                SiteDisclosure("Способы входа", connectionsExpanded, { connectionsExpanded = !connectionsExpanded },
+                    summary = "Google, VK ID, Mail.ru и Одноклассники могут вести в один кабинет.") {
+                    LinkedAccountsScreen(api, identity.user!!, {}, embedded = true)
+                }
+                var ordersExpanded by rememberSaveable { mutableStateOf(false) }
+                SiteDisclosure("История заказов", ordersExpanded, { ordersExpanded = !ordersExpanded },
+                    summary = "Статусы, состав и сумма ваших заказов.") {
+                    AccountOrdersInline(api) { selectedAccountOrder = it; route = "orders" }
+                }
+            }, footer = {
+                NotificationPreferences(api)
                 AccountLink("Уведомления", "Сообщения и изменения заказов") { route = "notifications" }
-            }
-            SectionCard("Аккаунт и помощь") {
-                AccountLink("Привязать email", "Отправим шестизначный код и добавим адрес только после подтверждения.") { route = "email" }
-                AccountLink("Способы входа", "Google, VK ID, Mail.ru и Одноклассники") { route = "connections" }
-                AccountLink("Поддержка", "Написать нам и посмотреть ответы") { route = "support" }
-            }
-            AccountProfileDetails(api, current)
-            val referral = current.optJSONObject("referral_program")
-            NotificationPreferences(api)
-            if (referral != null && referral.optBoolean("is_active") && referral.optString("registration_path").isNotBlank()) SectionCard("Приведи друга") {
-                Text("Приглашено: ${referral.optInt("invited_count")} · Начислено: ${money(referral.optLong("earned_kopecks"))}")
-                Text("Ваш код: ${referral.optString("code")}")
-                OutlinedButton(onClick = {
-                    val link = api.baseUrl + referral.optString("registration_path")
-                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "Присоединяйтесь к Колбаботу: $link") }, "Пригласить друга"))
-                }) { Text("Поделиться приглашением") }
-            }
-            SectionCard("О приложении") {
-                Text("Колбабот ${BuildConfig.VERSION_NAME}")
-                TextButton(onClick = { openLink(context, "/android/privacy") }) { Text("Политика конфиденциальности") }
-                TextButton(onClick = { openLink(context, "/android/delete-account") }) { Text("Удалить аккаунт и данные") }
-                TextButton(onClick = { openLink(context, "/public-offer") }) { Text("Публичная оферта") }
-                TextButton(onClick = { openLink(context, "/payment-credentials") }) { Text("Реквизиты и оплата") }
-            }
-            OutlinedButton(enabled = !busy, onClick = { logoutConfirmation = true }) { Text("Выйти") }
-        }
+                SectionCard("О приложении") {
+                    Text("Колбабот ${BuildConfig.VERSION_NAME}")
+                    TextButton(onClick = { openLink(context, "/android/privacy") }) { Text("Политика конфиденциальности") }
+                    TextButton(onClick = { openLink(context, "/android/delete-account") }) { Text("Удалить аккаунт и данные") }
+                    TextButton(onClick = { openLink(context, "/public-offer") }) { Text("Публичная оферта") }
+                    TextButton(onClick = { openLink(context, "/payment-credentials") }) { Text("Реквизиты и оплата") }
+                }
+                OutlinedButton(enabled = !busy, onClick = { logoutConfirmation = true }) { Text("Выйти") }
+            })
     }
     if (logoutConfirmation) AlertDialog(onDismissRequest = { logoutConfirmation = false }, title = { Text("Выйти из аккаунта?") },
         text = { Text("Заказы и данные останутся на сервере. Для доступа нужно будет войти снова.") },
@@ -138,16 +137,27 @@ import java.util.Locale
         }) { Text("Выйти") } }, dismissButton = { TextButton(onClick = { logoutConfirmation = false }) { Text("Отмена") } })
 }
 
-@Composable private fun AccountLink(title: String, subtitle: String, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        }
+@Composable private fun AccountOrdersInline(api: ApiClient, onOpen: (String) -> Unit) {
+    var data by remember { mutableStateOf<JSONObject?>(null) }
+    var error by remember { mutableStateOf("") }
+    var refresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(api, refresh) {
+        error = ""
+        try { data = api.get("/api/store/orders") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { error = failure.message.orEmpty() }
     }
+    OutlinedButton(onClick = { refresh++ }) { Text("Обновить") }
+    ErrorMessage(error)
+    if (data == null && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+    data?.let { result ->
+        if (result.items("items").isEmpty()) Text("Оплаченных заказов пока нет")
+        result.items("items").forEach { order -> OrderCompactRow(order, customer = true) { onOpen(order.optString("order_id")) } }
+    }
+}
+
+@Composable private fun AccountLink(title: String, subtitle: String, onClick: () -> Unit) {
+    SiteListRow(title, onClick = onClick, subtitle = subtitle)
 }
 
 @Composable private fun NotificationsScreen(api: ApiClient, onBack: () -> Unit) {
@@ -182,7 +192,7 @@ import java.util.Locale
     }
 }
 
-@Composable internal fun EmailScreen(api: ApiClient, user: JSONObject, onConfirmed: () -> Unit = {}, onBack: () -> Unit) {
+@Composable internal fun EmailScreen(api: ApiClient, user: JSONObject, onConfirmed: () -> Unit = {}, embedded: Boolean = false, onBack: () -> Unit) {
     var email by rememberSaveable { mutableStateOf(user.optString("email").takeUnless { it == "null" }.orEmpty()) }
     var code by remember { mutableStateOf("") }; var sent by rememberSaveable { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }; var notice by remember { mutableStateOf("") }; var busy by remember { mutableStateOf(false) }
@@ -202,11 +212,8 @@ import java.util.Locale
             finally { busy = false }
         }
     }
-    Page("Привязать email", onBack = {
-        if (!busy) {
-            if (sent) { sent = false; code = ""; notice = ""; error = "" } else onBack()
-        }
-    }) {
+    val content: @Composable ColumnScope.() -> Unit = {
+        Text("Привязать email", style = MaterialTheme.typography.titleSmall)
         Text("На этот адрес приходят подтверждения и приобретённые книги.")
         ErrorMessage(error); if (notice.isNotBlank()) Text(notice)
         OutlinedTextField(email, { email = it }, enabled = !busy && !sent, singleLine = true, label = { Text("Email") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth())
@@ -224,9 +231,20 @@ import java.util.Locale
             TextButton(enabled = !busy, onClick = { sent = false; code = ""; notice = ""; error = "" }) { Text("Изменить адрес") }
         }
     }
+    if (embedded) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+    else Page("Привязать email", onBack = {
+        if (!busy) { if (sent) { sent = false; code = ""; notice = ""; error = "" } else onBack() }
+    }, content = content)
+
 }
 
 @Composable internal fun SubscriptionScreen(api: ApiClient, onBack: () -> Unit) {
+    AccountSubscriptionPage(api, "Больше возможностей Колбабота", "Скидка в магазине, все PREMIUM-статьи и заметный статус в комментариях.", onBack = onBack)
+}
+
+@Composable private fun AccountSubscriptionPage(api: ApiClient, title: String, subtitle: String = "",
+    profile: @Composable ColumnScope.() -> Unit = {}, afterBilling: @Composable ColumnScope.() -> Unit = {},
+    footer: @Composable ColumnScope.() -> Unit = {}, onBack: (() -> Unit)? = null) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     val preferences = remember { context.getSharedPreferences("subscription_payment", Context.MODE_PRIVATE) }
     val key = "order_${api.userId}"
@@ -270,7 +288,8 @@ import java.util.Locale
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) { error = e.message.orEmpty() }
     }
-    Page("Доступ", onBack = onBack) {
+    Page(title, subtitle, onBack, eyebrow = if (onBack == null) "Личный кабинет" else "PREMIUM") {
+        profile()
         ErrorMessage(error); if (notice.isNotBlank()) Text(notice)
         val account = billing
         if (account == null && error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -292,6 +311,7 @@ import java.util.Locale
             }
             if (it.optBoolean("autopay_enabled")) OutlinedButton(enabled = !busy, onClick = { cancelConfirm = true }) { Text("Отключить автопродление") }
         } }
+        afterBilling()
         if (pending.isNotBlank()) SectionCard("Проверка оплаты") {
             Text("Запрос отправлен в банк. Проверьте результат перед новой оплатой.")
             if (paymentUrl.isNotBlank()) Button(onClick = { openLink(context, paymentUrl) }, enabled = !busy) { Text("Продолжить оплату") }
@@ -304,12 +324,14 @@ import java.util.Locale
                 OutlinedButton(onClick = { supportConfirmed = false; recoveryConfirm = true }) { Text("Поддержка завершила проверку") }
             }
         }
-        offers?.items("plans")?.forEach { plan -> SectionCard(plan.optString("title", "PREMIUM")) {
+        if (offers != null && offers?.items("plans")?.isNotEmpty() == true) SectionCard(if (onBack == null) "Оформить PREMIUM" else "Тариф") {
+        offers?.items("plans")?.forEach { plan -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(plan.optString("title", "PREMIUM"), style = MaterialTheme.typography.titleMedium)
             Text("${money(plan.optLong("amount_kopecks"))} / ${plan.optInt("duration_days")} дней", style = MaterialTheme.typography.headlineSmall)
             Text(plan.optString("description"))
             plan.optJSONArray("features")?.let { features -> for (i in 0 until features.length()) Text("• ${features.optString(i)}") }
         } }
-        if (offers?.optBoolean("enabled") == true && pending.isBlank() && billing != null && !(billing?.optString("status") == "active" && billing?.optString("tier") == "premium")) SectionCard("Оформить PREMIUM") {
+        if (offers?.optBoolean("enabled") == true && pending.isBlank() && billing != null && !(billing?.optString("status") == "active" && billing?.optString("tier") == "premium")) {
             OutlinedTextField(promo, { promo = it }, label = { Text("Промокод") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             SubscriptionPromoPreview(api, promo, enabled = !busy)
             ConsentRow("Принимаю публичную оферту", offerConsent, { offerConsent = it }, "/public-offer")
@@ -340,7 +362,9 @@ import java.util.Locale
                 }
             }) { Text("Перейти к оплате в Т-Банке") }
         }
+        }
         OutlinedButton(onClick = { refresh++ }) { Text("Обновить") }
+        footer()
     }
     if (recoveryConfirm) AlertDialog(onDismissRequest = { recoveryConfirm = false }, title = { Text("Завершить проверку оплаты?") },
         text = { Column {

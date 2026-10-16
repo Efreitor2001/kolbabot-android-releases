@@ -65,8 +65,8 @@ internal object ApiContract {
 }
 
 /** The app stores only a revocable site session, encrypted with a device-bound key. */
-private class SessionVault(context: Context) {
-    private val preferences = context.getSharedPreferences("secure_session", Context.MODE_PRIVATE)
+internal class SessionVault(context: Context, preferenceName: String = "secure_session") {
+    private val preferences = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey("kolbabot_session_v1", null) as? SecretKey)?.let { return it }

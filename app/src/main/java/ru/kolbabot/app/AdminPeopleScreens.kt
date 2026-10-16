@@ -4,10 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -122,242 +126,279 @@ fun AdminPeopleScreen(api: ApiClient, section: String, onBack: () -> Unit) {
 @Composable
 private fun AdminUsersPeopleScreen(api: ApiClient, onBack: () -> Unit) {
     var selectedId by rememberSaveable { mutableLongStateOf(0L) }
-    var createAdmin by remember { mutableStateOf(false) }
+    var dossier by remember { mutableStateOf<JSONObject?>(null) }
+    var listedProfile by remember { mutableStateOf<JSONObject?>(null) }
+    var revision by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf<PeopleConfirmation?>(null) }
-    BackHandler(selectedId > 0 || createAdmin) { selectedId = 0; createAdmin = false }
-    if (selectedId > 0) {
-        AdminPersonDetail(api, selectedId, { selectedId = it }) { selectedId = 0 }
-    } else if (createAdmin) {
-        AdminEditForm("Создать или назначить администратора", listOf(
-            AdminField("mode", "Действие", "choice", options = listOf("existing" to "Назначить существующего пользователя", "new" to "Создать нового администратора")),
-            AdminField("user_id", "Пользователь", "user", required = true, visibleWhen = "mode" to "existing"),
-            AdminField("username", "Логин нового администратора", required = true, visibleWhen = "mode" to "new"),
-            AdminField("password", "Пароль нового администратора", "password", required = true, visibleWhen = "mode" to "new"),
-        ), JSONObject().put("mode", "existing"), onBack = { createAdmin = false }, userApi = api) { values ->
-            if (values.optString("mode") == "existing") {
-                val id = values.getLong("user_id")
-                api.patch("/api/admin/users/$id", JSONObject().put("is_admin", true))
-                selectedId = id
-            } else {
-                val response = api.post("/api/admin/users/promote", AdminPeopleContract.credentials(values))
-                selectedId = response.optJSONObject("user")?.optLong("id") ?: 0L
-            }
-            createAdmin = false
+    var newAdminName by rememberSaveable { mutableStateOf("") }
+    var newAdminPassword by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(api, selectedId, revision) {
+        dossier = null; error = ""; loading = false
+        if (selectedId <= 0) return@LaunchedEffect
+        loading = true
+        try { dossier = api.get("/api/admin/users/$selectedId/dossier") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { error = failure.message.orEmpty() }
+        finally { loading = false }
+    }
+    // The website profile uses the public admin users response, including server-normalized
+    // subscription fields; the raw dossier is reserved for its explicitly expanded records.
+    val user = remember(listedProfile, dossier, selectedId) {
+        listedProfile?.takeIf { it.optLong("id") == selectedId }
+            ?: dossier?.let(AdminPeopleContract::userFromDossier) ?: JSONObject()
+    }
+    val present = selectedId > 0 && user.optLong("id") == selectedId && !loading
+    val canEdit = present && !busy
+    val protectedFromBan = selectedId == api.userId || AdminPeopleContract.flag(user, "is_admin")
+    var username by remember(selectedId, user) { mutableStateOf(user.optString("username")) }
+    var password by remember(selectedId, user) { mutableStateOf("") }
+    var isAdmin by remember(selectedId, user) { mutableStateOf(AdminPeopleContract.flag(user, "is_admin")) }
+    var isActive by remember(selectedId, user) { mutableStateOf(AdminPeopleContract.flag(user, "is_active")) }
+    var sausages by remember(selectedId, user) { mutableStateOf(user.optLong("store_sausages").toString()) }
+    var hours by rememberSaveable(selectedId) { mutableStateOf("24") }
+    var accessMode by rememberSaveable(selectedId) { mutableStateOf("replace") }
+    fun action(success: String, work: suspend () -> Unit) {
+        busy = true; error = ""; notice = ""
+        scope.launch {
+            try { work(); password = ""; notice = success; revision++ }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { error = failure.message.orEmpty() }
+            finally { busy = false }
         }
-    } else Page("Пользователи", onBack = onBack) {
-        AdminUserPicker(api, null, { selectedId = it ?: 0 })
-        Text("Выберите пользователя, чтобы открыть профиль, доступ, баланс и действия с аккаунтом.")
-        OutlinedButton(onClick = {
-            confirm = PeopleConfirmation("Новый администратор", "Администратор сможет управлять пользователями, контентом, заказами и настройками сайта. Продолжить к форме?") { createAdmin = true }
-        }) { Text("Администратор +") }
+    }
+    fun ask(title: String, body: String, success: String, work: suspend () -> Unit) {
+        confirm = PeopleConfirmation(title, body) { work(); password = ""; if (success.isNotBlank()) notice = success; revision++ }
+    }
+    Page("Пользователи", "Полный профиль пользователя, управление правами, отключение и сервисные действия.", onBack) {
+        key(revision) { AdminUserPicker(api, selectedId.takeIf { it > 0 }, { selectedId = it ?: 0; notice = "" }, label = "Пользователи", enabled = !busy, onUserResolved = { listedProfile = it }) }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        ErrorMessage(error)
+        if (present) {
+            val role = if (AdminPeopleContract.flag(user, "is_admin")) "Админ" else "Обычный пользователь"
+            val status = if (AdminPeopleContract.flag(user, "is_active")) "Активен" else "Отключен"
+            val twofa = if (AdminPeopleContract.flag(user, "totp_enabled")) "2FA: включен" else if (AdminPeopleContract.flag(user, "twofa_enrolled")) "2FA: отвязан" else "2FA: не подключен"
+            val tier = if (user.optString("subscription_tier") == "premium") "PREMIUM" else "Базовый"
+            val subscriptionStatus = user.optString("subscription_status").ifBlank { "inactive" }
+            val until = user.optString("subscription_active_until").takeUnless { it.isBlank() || it == "null" }?.let { ", до: ${adminCartDate(it)}" }.orEmpty()
+            val lastLogin = user.optString("last_login_at").takeUnless { it.isBlank() || it == "null" }?.let { ", вход: ${adminCartDate(it)}" }.orEmpty()
+            Text("$role, $status, $twofa, подписка: $tier ($subscriptionStatus$until)$lastLogin", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        }
+        Text("Профиль пользователя", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("admin-user-profile-heading"))
+        if (present) SectionCard("Профиль пользователя #$selectedId") { AdminUserProfileFields(user) }
+        else Text("Выберите пользователя в списке.", color = SiteColors.Muted)
+        Text("Полное досье пользователя", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("admin-user-dossier-heading"))
+        dossier?.let { AdminUserDossier(it) } ?: Text("Выберите пользователя в списке.", color = SiteColors.Muted)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(isAdmin, { isAdmin = it }, enabled = canEdit); Text("Админ") }
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(isActive, { isActive = it }, enabled = canEdit && !protectedFromBan); Text("Активен") }
+        }
+        OutlinedTextField(username, { username = it }, label = { Text("Логин") }, singleLine = true, enabled = canEdit, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(password, { password = it }, label = { Text("Новый пароль") }, singleLine = true, enabled = canEdit,
+            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+        Text("Логин и пароль применяются кнопкой «Сохранить пользователя». Пустой пароль сохраняет текущий. Новый пароль: от 10 символов, со строчной и заглавной буквами, цифрой и спецсимволом.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        Text("Колбаски магазина", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(sausages, { sausages = it }, label = { Text("Баланс колбасок") }, singleLine = true, enabled = canEdit,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        Text("Сохранение пользователя перезаписывает указанный баланс колбасок.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        Text("Управление доступом", style = MaterialTheme.typography.titleMedium)
+        SiteSelect("Тариф", "premium", listOf("premium" to "PREMIUM"), {}, enabled = canEdit)
+        OutlinedTextField(hours, { hours = it }, label = { Text("Часов доступа") }, singleLine = true, enabled = canEdit,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        SiteSelect("Режим", accessMode, listOf("replace" to "Выдать/перезаписать", "extend" to "Продлить сверху"), { accessMode = it }, enabled = canEdit)
+        Button(enabled = canEdit && (hours.toLongOrNull() ?: 0) in 1L..8760L, onClick = {
+            val target = selectedId
+            val payload = AdminPeopleContract.access(JSONObject().put("duration_hours", hours.toLong()).put("action", accessMode))
+            ask("Применить доступ?", "${if (accessMode == "extend") "Продлить" else "Выдать"} PREMIUM пользователю #$target на $hours ч.?", "Доступ обновлён.") { api.post("/api/admin/users/$target/access", payload) }
+        }) { Text("Применить доступ") }
+        TextButton(enabled = canEdit, onClick = { val target = selectedId; ask("Снять доступ?", "Пользователь #$target потеряет действующий доступ PREMIUM.", "Доступ снят.") { api.post("/api/admin/users/$target/access/revoke") } }) { Text("Снять доступ") }
+        TextButton(enabled = canEdit, onClick = { val target = selectedId; ask("Отключить автоплатёж?", "Автосписания пользователя #$target будут отключены, сохранённые токены отвязаны.", "Автоплатёж отключён.") { api.post("/api/admin/users/$target/autopay/disable") } }) { Text("Отключить автоплатёж") }
+        Text("Безопасность", style = MaterialTheme.typography.titleMedium)
+        TextButton(enabled = canEdit && !protectedFromBan && AdminPeopleContract.flag(user, "is_active"), onClick = { val target = selectedId; ask("Забанить пользователя?", "Пользователь #$target не сможет входить в аккаунт.", "Пользователь забанен.") { api.patch("/api/admin/users/$target", JSONObject().put("is_active", false)) } }) { Text("Забанить") }
+        TextButton(enabled = canEdit && !AdminPeopleContract.flag(user, "is_active"), onClick = { val target = selectedId; action("Пользователь разбанен.") { api.patch("/api/admin/users/$target", JSONObject().put("is_active", true)) } }) { Text("Разбанить") }
+        TextButton(enabled = canEdit, onClick = { val target = selectedId; ask("Завершить все сессии?", "Пользователю #$target потребуется войти заново на всех устройствах.", "Все сессии завершены.") { api.post("/api/admin/users/$target/sessions/revoke") } }) { Text("Завершить все сессии") }
+        TextButton(enabled = canEdit, onClick = { val target = selectedId; ask("Сбросить 2FA?", "Настройка двухэтапного входа пользователя #$target будет сброшена.", "Двухэтапный вход сброшен.") { api.patch("/api/admin/users/$target", JSONObject().put("reset_2fa", true)) } }) { Text("Сбросить 2FA") }
+        Button(enabled = canEdit && username.isNotBlank() && (sausages.toLongOrNull() ?: -1) >= 0, onClick = {
+            val target = selectedId
+            val payload = AdminPeopleContract.credentials(JSONObject().put("username", username).put("password", password))
+                .put("is_admin", isAdmin).put("is_active", isActive).put("store_sausages", sausages.toLong())
+            if ((AdminPeopleContract.flag(user, "is_admin") && !isAdmin) || (AdminPeopleContract.flag(user, "is_active") && !isActive)) {
+                ask("Сохранить изменения прав?", "Изменятся права или возможность входа пользователя #$target.", "Пользователь #$target обновлён.") { api.patch("/api/admin/users/$target", payload) }
+            } else action("Пользователь #$target обновлён.") { api.patch("/api/admin/users/$target", payload) }
+        }) { Text("Сохранить пользователя") }
+        TextButton(enabled = canEdit && AdminPeopleContract.flag(user, "is_admin"), onClick = { val target = selectedId; ask("Снять права админа?", "Пользователь #$target потеряет права управления сайтом.", "Права администратора сняты.") { api.patch("/api/admin/users/$target", JSONObject().put("is_admin", false)) } }) { Text("Снять права админа") }
+        TextButton(enabled = canEdit, onClick = { val target = selectedId; ask("Попытаться списать оплату сейчас?", "Будет выполнено принудительное списание по сохранённому способу оплаты пользователя #$target. После сетевой ошибки сначала проверьте платежи, прежде чем повторять.", "") {
+            val result = api.post("/api/admin/payments/tbank/renewals/run", JSONObject().put("user_id", target).put("limit", 1).put("force", true))
+            notice = "Обработано: ${result.optInt("processed")}; успешно: ${result.optInt("success")}; ошибок: ${result.optInt("failed")}."
+        } }) { Text("Тест автосписания по пользователю") }
+        OutlinedButton(enabled = !busy, onClick = { revision++ }) { Text("Обновить список") }
+        Text("Добавить администратора по логину", style = MaterialTheme.typography.titleMedium)
+        Text("Укажите логин существующего пользователя или создайте нового администратора с паролем.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        OutlinedTextField(newAdminName, { newAdminName = it }, label = { Text("Логин администратора") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(newAdminPassword, { newAdminPassword = it }, label = { Text("Пароль (для нового или сброса)") }, singleLine = true, enabled = !busy,
+            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+        Text("Пароль должен содержать строчную и заглавную буквы, цифру и спецсимвол.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        Button(enabled = !busy && newAdminName.isNotBlank(), onClick = {
+            val payload = AdminPeopleContract.credentials(JSONObject().put("username", newAdminName).put("password", newAdminPassword))
+            ask("Выдать права админа?", "Пользователь ${newAdminName.trim()} сможет управлять пользователями, контентом, заказами и настройками сайта.", "Права администратора выданы.") {
+                val response = api.post("/api/admin/users/promote", payload); newAdminPassword = ""
+                response.optJSONObject("user")?.optLong("id")?.takeIf { it > 0 }?.let { selectedId = it }
+            }
+        }) { Text("Выдать права админа") }
+        if (notice.isNotBlank()) Text(notice, color = SiteColors.Accent)
     }
     PeopleConfirmDialog(confirm) { confirm = null }
 }
 
-private val dossierTitles = mapOf(
-    "miniapp_users" to "Профиль", "miniapp_oauth_identities" to "Подключённые способы входа",
-    "miniapp_user_access" to "Доступ и подписка", "miniapp_tbank_payments" to "Оплаты подписки",
-    "miniapp_sessions" to "Сессии", "store_orders" to "Заказы магазина", "store_user_rewards" to "Баланс колбасок",
-    "store_reward_transactions" to "История колбасок", "support_tickets" to "Обращения в поддержку",
-)
+@Composable private fun AdminUserProfileFields(user: JSONObject) {
+    val fields = linkedMapOf("id" to "ID", "username" to "Логин", "email" to "Email", "email_verified" to "Email подтвержден",
+        "first_name" to "Имя", "last_name" to "Фамилия", "phone" to "Телефон из аккаунта", "oauth_provider" to "Провайдер входа",
+        "oauth_provider_label" to "Источник входа", "oauth_profile_consent_at" to "Согласие на данные OAuth", "is_admin" to "Админ", "is_active" to "Активен", "totp_enabled" to "2FA включен", "twofa_enrolled" to "2FA подключен",
+        "created_at" to "Создан", "updated_at" to "Обновлен", "last_login_at" to "Последний вход", "pd_consent_at" to "Согласие ПД", "cookie_notice_ack_at" to "Согласие cookie", "subscription_tier" to "Уровень подписки",
+        "subscription_status" to "Статус подписки", "subscription_active_until" to "Оплачен до", "subscription_autopay_enabled" to "Автоплатеж", "subscription_autopay_method" to "Метод автоплатежа",
+        "subscription_has_rebill" to "Есть RebillId", "subscription_has_sbp" to "Есть SBP токен", "subscription_source" to "Источник доступа",
+        "subscription_last_order_id" to "Последний order_id", "subscription_last_payment_id" to "Последний payment_id", "subscription_updated_at" to "Подписка обновлена", "store_sausages" to "Колбаски")
+    fields.forEach { (key, label) ->
+        val value = user.opt(key)
+        val text = when {
+            value == null || value == JSONObject.NULL || value.toString().isBlank() -> "—"
+            value is Boolean -> if (value) "Да" else "Нет"
+            key == "subscription_tier" -> if (value.toString() == "premium") "PREMIUM" else "Базовый"
+            key.endsWith("_at") || key.endsWith("_until") -> adminCartDate(value.toString()).takeUnless { it == "без даты" } ?: value.toString()
+            else -> value.toString()
+        }
+        Text("$label: $text", style = MaterialTheme.typography.bodySmall)
+    }
+}
 
-@Composable
-private fun AdminPersonDetail(api: ApiClient, userId: Long, onSelectUser: (Long) -> Unit, onBack: () -> Unit) {
-    var form by remember(userId) { mutableStateOf("") }
-    var initial by remember(userId) { mutableStateOf(JSONObject()) }
-    var confirm by remember(userId) { mutableStateOf<PeopleConfirmation?>(null) }
-    var result by remember(userId) { mutableStateOf<JSONObject?>(null) }
-    var refreshKey by remember(userId) { mutableIntStateOf(0) }
-    BackHandler(form.isNotEmpty()) { form = "" }
-    when (form) {
-        "credentials" -> AdminEditForm("Логин и пароль #$userId", listOf(
-            AdminField("username", "Логин", required = true),
-            AdminField("password", "Новый пароль — пусто, чтобы сохранить текущий", "password"),
-        ), initial, { form = "" }) { values -> api.patch("/api/admin/users/$userId", AdminPeopleContract.credentials(values)); form = ""; refreshKey++ }
-        "rewards" -> AdminEditForm("Баланс колбасок #$userId", listOf(AdminField("store_sausages", "Новый полный баланс колбасок", "long", true)), initial, { form = "" }) { values ->
-            require(values.optLong("store_sausages", -1) >= 0) { "Баланс не может быть отрицательным." }
-            api.patch("/api/admin/users/$userId", JSONObject().put("store_sausages", values.getLong("store_sausages"))); form = ""; refreshKey++
+@Composable private fun AdminUserDossier(data: JSONObject) {
+    Text("Снимок на: ${data.optString("generated_at", "—")}", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+    val referrals = data.optJSONObject("referrals") ?: JSONObject()
+    val invited = referrals.items("invited")
+    SectionCard("Реферальная программа · приглашено: ${invited.size}") {
+        referrals.optJSONObject("referred_by")?.let { Text("Сам зарегистрирован по приглашению пользователя #${it.optLong("referrer_user_id")} · ${it.optString("username", "Без имени")}") }
+        if (invited.isEmpty()) Text("Пользователь пока никого не пригласил.")
+        invited.forEach { person ->
+            Text("${person.optString("username", "Без имени")} · ${person.optString("email")}")
+            val reward = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("ru-RU")).format(person.optLong("reward_kopecks") / 100.0)
+            val rewardLabel = when {
+                !person.isNull("reversed_at") && person.optString("reversed_at").isNotBlank() -> "$reward колбасок · отменено возвратом"
+                !person.isNull("rewarded_at") && person.optString("rewarded_at").isNotBlank() -> "$reward колбасок начислено"
+                else -> "Первая покупка ещё не оплачена или акция была выключена"
+            }
+            Text("Пользователь #${person.optLong("referred_user_id")} · ${person.optString("registered_at")}", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+            Text("Первая покупка: ${person.optString("first_paid_order_id").takeUnless { it == "null" || it.isBlank() } ?: "ещё не было"} · $rewardLabel", style = MaterialTheme.typography.bodySmall)
         }
-        "access" -> AdminEditForm("Выдать или продлить PREMIUM #$userId", listOf(
-            AdminField("duration_hours", "Продолжительность в часах", "long", true),
-            AdminField("action", "Действие", "choice", options = listOf("replace" to "Выдать от текущего момента", "extend" to "Продлить имеющийся доступ")),
-        ), JSONObject().put("duration_hours", 24).put("action", "extend"), { form = "" }) { values ->
-            api.post("/api/admin/users/$userId/access", AdminPeopleContract.access(values)); form = ""; refreshKey++
-        }
-        else -> key(userId, refreshKey) {
-            RemotePage("Пользователь #$userId", api, "/api/admin/users/$userId/dossier", onBack) { dossier, reload ->
-                AdminUserPicker(api, userId, { it?.let(onSelectUser) })
-                val user = AdminPeopleContract.userFromDossier(dossier)
-                if (user.optLong("id") <= 0) {
-                    ErrorMessage("Пользователь не найден.")
-                } else {
-                    SectionCard(user.optString("username", "Пользователь")) {
-                        AdminCopyField("ID", userId.toString())
-                        listOf("email" to "Почта", "phone" to "Телефон", "first_name" to "Имя", "last_name" to "Фамилия", "created_at" to "Регистрация", "last_login_at" to "Последний вход").forEach { (field, label) ->
-                            val value = user.optString(field).takeUnless { it == "null" }.orEmpty()
-                            if (value.isNotBlank()) AdminCopyField(label, value)
-                        }
-                        Text("${if (AdminPeopleContract.flag(user, "is_admin")) "Администратор" else "Пользователь"} · ${if (AdminPeopleContract.flag(user, "is_active")) "Активен" else "Заблокирован"}")
-                        Text("Двухэтапный вход: ${if (AdminPeopleContract.flag(user, "totp_enabled")) "включён" else "выключен"}")
-                        OutlinedButton(onClick = { initial = JSONObject().put("username", user.optString("username")); form = "credentials" }) { Text("Изменить логин или пароль") }
-                    }
-                    SectionCard("Доступ и колбаски") {
-                        Text("Колбаски: ${user.optLong("store_sausages")}")
-                        Text("Тариф: ${user.optString("subscription_tier", "none")} · ${user.optString("subscription_status", "inactive")}")
-                        Text("Действует до: ${user.optString("subscription_active_until").takeUnless { it.isBlank() || it == "null" } ?: "Нет активного доступа"}")
-                        Text("Автопродление: ${if (AdminPeopleContract.flag(user, "subscription_autopay_enabled")) "включено" else "выключено"}")
-                        OutlinedButton(onClick = { initial = JSONObject().put("store_sausages", user.optLong("store_sausages")); form = "rewards" }) { Text("Изменить баланс колбасок") }
-                        OutlinedButton(onClick = { form = "access" }) { Text("Выдать / продлить PREMIUM") }
-                        TextButton(onClick = { confirm = PeopleConfirmation("Отозвать доступ?", "Пользователь #$userId потеряет действующий доступ PREMIUM.") { api.post("/api/admin/users/$userId/access/revoke"); reload() } }) { Text("Отозвать доступ") }
-                        TextButton(onClick = { confirm = PeopleConfirmation("Отключить автопродление?", "Новые автоматические списания подписки пользователя #$userId будут отключены.") { api.post("/api/admin/users/$userId/autopay/disable"); reload() } }) { Text("Отключить автопродление") }
-                    }
-                    SectionCard("Безопасность") {
-                        val isAdmin = AdminPeopleContract.flag(user, "is_admin")
-                        val active = AdminPeopleContract.flag(user, "is_active")
-                        TextButton(onClick = { confirm = PeopleConfirmation(if (isAdmin) "Снять права администратора?" else "Назначить администратором?", "Изменятся права управления сайтом у пользователя #$userId.") {
-                            api.patch("/api/admin/users/$userId", JSONObject().put("is_admin", !isAdmin)); reload()
-                        } }) { Text(if (isAdmin) "Снять права администратора" else "Назначить администратором") }
-                        TextButton(enabled = !active || (userId != api.userId && !isAdmin), onClick = { confirm = PeopleConfirmation(if (active) "Заблокировать пользователя?" else "Разблокировать пользователя?", "Изменится возможность входа в аккаунт #$userId.") {
-                            api.patch("/api/admin/users/$userId", JSONObject().put("is_active", !active)); reload()
-                        } }) { Text(if (active) "Заблокировать аккаунт" else "Разблокировать аккаунт") }
-                        TextButton(onClick = { confirm = PeopleConfirmation("Завершить все сессии?", "Пользователю #$userId потребуется войти заново на всех устройствах, включая сайт и приложение.") { api.post("/api/admin/users/$userId/sessions/revoke"); reload() } }) { Text("Завершить все сессии") }
-                        TextButton(onClick = { confirm = PeopleConfirmation("Сбросить двухэтапный вход?", "Настройка двухэтапного входа пользователя #$userId будет сброшена. Для доступа администратора потребуется настроить её снова.") { api.patch("/api/admin/users/$userId", JSONObject().put("reset_2fa", true)); reload() } }) { Text("Сбросить 2FA") }
-                    }
-                    SectionCard("Принудительное автосписание") {
-                        Text("Запускает реальную попытку оплаты подписки для этого пользователя, даже если очередной срок ещё не наступил.")
-                        OutlinedButton(onClick = { confirm = PeopleConfirmation("Попытаться списать оплату сейчас?", "Будет выполнено принудительное списание по сохранённому способу оплаты пользователя #$userId. После сетевой ошибки сначала проверьте платежи и личное дело, прежде чем повторять.") {
-                            result = api.post("/api/admin/payments/tbank/renewals/run", JSONObject().put("user_id", userId).put("limit", 1).put("force", true)); reload()
-                        } }) { Text("Запустить с подтверждением") }
-                    }
-                    result?.let { SectionCard("Результат операции") { AdminJsonDetails(it) } }
-                    SectionCard("Реферальная программа") { AdminJsonDetails(dossier.optJSONObject("referrals") ?: JSONObject()) }
-                    dossier.items("tables").forEach { table ->
-                        val rows = table.items("rows")
-                        var expanded by remember(table.optString("table")) { mutableStateOf(false) }
-                        SectionCard(dossierTitles[table.optString("table")] ?: table.optString("table")) {
-                            Text("Записей: ${table.optLong("total")} · загружено: ${rows.size}")
-                            if (rows.isNotEmpty()) TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Свернуть" else "Показать записи") }
-                            if (expanded) rows.forEachIndexed { index, row ->
-                                if (index > 0) HorizontalDivider()
-                                AdminJsonDetails(row)
-                            }
+    }
+    data.items("tables").forEach { table ->
+        val rows = table.items("rows")
+        SectionCard("${table.optString("table")} · всего: ${table.optLong("total", rows.size.toLong())}") {
+            if (rows.isEmpty()) Text("Записей нет.")
+            rows.forEachIndexed { index, row ->
+                key(table.optString("table"), index) {
+                    var expanded by rememberSaveable { mutableStateOf(false) }
+                    SiteDisclosure("Запись #${index + 1}", expanded, { expanded = !expanded }, modifier = Modifier.testTag("admin-dossier-${table.optString("table")}-record-$index")) {
+                        row.keys().forEach { key ->
+                            val value = row.opt(key)
+                            Text("$key: ${when (value) { null, JSONObject.NULL -> "—"; is JSONObject -> value.toString(2); is org.json.JSONArray -> value.toString(2); else -> value.toString() }}", style = MaterialTheme.typography.bodySmall)
                         }
                     }
-                    OutlinedButton(onClick = reload) { Text("Обновить личное дело") }
                 }
             }
         }
     }
-    PeopleConfirmDialog(confirm) { confirm = null }
 }
 
 @Composable
 private fun AdminSupportPeopleScreen(api: ApiClient, onBack: () -> Unit) {
-    var filter by rememberSaveable { mutableStateOf("open") }
-    var search by rememberSaveable { mutableStateOf("") }
-    var ticket by remember { mutableStateOf<JSONObject?>(null) }
-    var refreshKey by remember { mutableIntStateOf(0) }
-    var count by remember(filter, search) { mutableIntStateOf(50) }
-    var expandedId by rememberSaveable(filter, search) { mutableLongStateOf(0) }
-    BackHandler(ticket != null) { ticket = null }
-    val selected = ticket
-    if (selected != null) {
-        Column(Modifier.fillMaxSize()) {
-            Surface(tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)) {
-                Text("Вопрос: ${selected.optString("question_text")}", Modifier.verticalScroll(rememberScrollState()).padding(20.dp))
+    var selectedId by rememberSaveable { mutableLongStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    RemotePage("Обращения поддержки", api, "/api/admin/support/tickets?status=all&limit=300", onBack) { data, reload ->
+        val tickets = data.items("items")
+        val selected = tickets.firstOrNull { it.optLong("id") == selectedId } ?: tickets.firstOrNull()
+        var answer by rememberSaveable(selected?.optLong("id")) { mutableStateOf("") }
+        OutlinedButton(enabled = !busy, onClick = reload) { Text("Обновить") }
+        SiteSelect("Обращение", selected?.optLong("id")?.toString().orEmpty(), tickets.map {
+            it.optLong("id").toString() to "#${it.optLong("id")} · ${it.optString("username", "Пользователь")}"
+        }, { selectedId = it.toLong(); notice = "" }, enabled = !busy)
+        selected?.let { ticket ->
+            SectionCard {
+                Text("#${ticket.optLong("id")} · ${ticket.optString("username", "Пользователь")}", style = MaterialTheme.typography.titleSmall)
+                Text(ticket.optString("question_text"))
+                val existing = ticket.optString("answer_text").takeUnless { it == "null" }.orEmpty()
+                if (existing.isNotBlank()) Text("Ответ: $existing")
             }
-            Box(Modifier.weight(1f)) {
-                AdminEditForm("Ответ на обращение #${selected.optLong("id")}", listOf(AdminField("answer_text", "Ответ пользователю", "multiline", true)),
-                    JSONObject().put("answer_text", selected.optString("answer_text").takeUnless { it == "null" }.orEmpty()), { ticket = null }) { values ->
-                    require(values.optString("answer_text").isNotBlank()) { "Введите ответ." }
-                    api.post("/api/admin/support/tickets/${selected.optLong("id")}/answer", JSONObject().put("answer_text", values.getString("answer_text")))
-                    ticket = null; refreshKey++
-                }
+        } ?: Text("Выберите обращение.", color = SiteColors.Muted)
+        OutlinedTextField(answer, { answer = it }, label = { Text("Ответ") }, minLines = 4, modifier = Modifier.fillMaxWidth(), enabled = !busy)
+        Button(enabled = !busy && selected != null && answer.isNotBlank(), onClick = {
+            val ticketId = selected!!.optLong("id"); val submitted = answer.trim()
+            busy = true; error = ""; notice = ""
+            scope.launch {
+                try { api.post("/api/admin/support/tickets/$ticketId/answer", JSONObject().put("answer_text", submitted)); answer = ""; notice = "Ответ отправлен."; reload() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { error = failure.message.orEmpty() }
+                finally { busy = false }
             }
-        }
-    } else key(refreshKey) {
-        RemotePage("Поддержка", api, "/api/admin/support/tickets?status=$filter&limit=500", onBack) { data, reload ->
-            BackHandler(expandedId > 0 || search.isNotBlank()) { if (expandedId > 0) expandedId = 0 else search = "" }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("open" to "Открытые", "answered" to "С ответом", "all" to "Все").forEach { (value, label) ->
-                    FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(label) })
-                }
-            }
-            OutlinedTextField(search, { search = it }, label = { Text("Поиск по обращению или пользователю") }, modifier = Modifier.fillMaxWidth())
-            val tickets = data.items("items").filter { row -> search.isBlank() || listOf("id", "username", "user_id", "question_text", "answer_text").any { row.optString(it).contains(search, true) } }
-            Text("Обращений: ${tickets.size}")
-            OutlinedButton(onClick = reload) { Text("Обновить") }
-            tickets.take(count).forEach { row ->
-                val id = row.optLong("id")
-                val answer = row.optString("answer_text").takeUnless { it == "null" }.orEmpty()
-                val answered = answer.isNotBlank() || row.optString("answered_at").let { it.isNotBlank() && it != "null" }
-                SiteDisclosure("#${id} · ${row.optString("username", "Пользователь")}", expandedId == id,
-                    { expandedId = if (expandedId == id) 0 else id }, summary = row.optString("question_text"),
-                    accent = if (answered) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
-                    bodyPadding = 14.dp, bodySpacing = 8.dp) {
-                    Text("Пользователь #${row.optLong("user_id")} · ${row.optString("created_at")}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SiteListBadge(if (answered) "С ответом" else "Открыто", if (answered) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary)
-                        if (AdminPeopleContract.flag(row, "is_premium")) SiteListBadge("PREMIUM", MaterialTheme.colorScheme.secondary)
-                    }
-                    Text(row.optString("question_text"))
-                    if (answer.isNotBlank()) { HorizontalDivider(); Text("Ответ: $answer"); Text(row.optString("answer_updated_at").takeUnless { it == "null" }.orEmpty()) }
-                    if (answer.isBlank() && row.optString("answered_at").let { it.isBlank() || it == "null" }) {
-                        Button(onClick = { ticket = row }) { Text("Ответить") }
-                    } else Text("Обращение закрыто")
-                }
-            }
-            if (count < tickets.size) OutlinedButton(onClick = { count += 50 }) { Text("Показать ещё") }
-            if (tickets.isEmpty()) Text("Обращений по этому фильтру нет.")
-        }
+        }) { Text("Отправить ответ") }
+        ErrorMessage(error)
+        if (notice.isNotBlank()) Text(notice, color = SiteColors.Accent)
     }
 }
 
 @Composable
 private fun AdminNotificationsPeopleScreen(api: ApiClient, onBack: () -> Unit) {
-    var draft by remember { mutableStateOf<JSONObject?>(null) }
-    var filter by rememberSaveable { mutableStateOf("all") }
+    var scopeName by rememberSaveable { mutableStateOf("global") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var message by rememberSaveable { mutableStateOf("") }
+    var targetUser by rememberSaveable { mutableLongStateOf(0) }
     var confirm by remember { mutableStateOf<PeopleConfirmation?>(null) }
-    var refreshKey by remember { mutableIntStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var notice by remember { mutableStateOf("") }
     var limit by remember { mutableIntStateOf(200) }
-    var expandedId by rememberSaveable(filter) { mutableLongStateOf(0) }
-    BackHandler(draft != null) { draft = null }
-    val current = draft
-    if (current != null) AdminEditForm("Отправить оповещение", listOf(
-        AdminField("scope", "Получатели", "choice", options = listOf("global" to "Все активные пользователи", "personal" to "Один пользователь")),
-        AdminField("target_user_id", "Получатель", "user", required = true, visibleWhen = "scope" to "personal"),
-        AdminField("title", "Заголовок", required = true), AdminField("message", "Сообщение", "multiline", true),
-    ), current, { draft = null }, userApi = api) { values ->
-        api.post("/api/admin/notifications", AdminPeopleContract.notification(values)); draft = null; refreshKey++
-    } else key(refreshKey) {
-        RemotePage("Оповещения", api, "/api/admin/notifications?limit=$limit", onBack) { data, reload ->
-            BackHandler(expandedId > 0) { expandedId = 0 }
-            Button(onClick = { draft = JSONObject().put("scope", "global").put("target_user_id", 0) }) { Text("Создать оповещение") }
-            Text("Отправленное сообщение можно удалить или использовать как основу нового. Удаление уберёт его и у получателей.")
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("all" to "Все", "global" to "Общие", "personal" to "Личные").forEach { (value, label) ->
-                    FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(label) })
-                }
+    val coroutineScope = rememberCoroutineScope()
+    RemotePage("Оповещения", api, "/api/admin/notifications?limit=$limit", onBack) { data, reload ->
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("global" to "Общее", "personal" to "Личное").forEach { (value, label) ->
+                FilterChip(selected = scopeName == value, enabled = !busy, onClick = { scopeName = value }, label = { Text(label) })
             }
-            val items = data.items("items").filter { filter == "all" || it.optString("scope") == filter }
-            OutlinedButton(onClick = reload) { Text("Обновить") }
-            items.forEach { item ->
-                val id = item.optLong("id")
-                SiteDisclosure(item.optString("title"), expandedId == id, { expandedId = if (expandedId == id) 0 else id },
-                    summary = item.optString("message"), accent = if (item.optString("scope") == "personal") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
-                    bodyPadding = 14.dp, bodySpacing = 8.dp) {
-                    Text("#${item.optLong("id")} · ${item.optString("created_at")}")
-                    Text(if (item.optString("scope") == "personal") "Личное: ${item.optString("target_username")} (#${item.optLong("target_user_id")})" else "Общее · получателей: ${item.optLong("recipients_count")}")
-                    Text(item.optString("message"))
-                    Text("Прочитано: ${item.optLong("read_count")}")
-                    TextButton(onClick = { draft = JSONObject().put("scope", item.optString("scope")).put("target_user_id", item.optLong("target_user_id")).put("title", item.optString("title")).put("message", item.optString("message")) }) { Text("Создать на основе") }
-                    TextButton(onClick = { confirm = PeopleConfirmation("Удалить оповещение?", "Оповещение «${item.optString("title")}» пропадёт у всех его получателей.") { api.delete("/api/admin/notifications/${item.optLong("id")}"); reload() } }) { Text("Удалить") }
-                }
-            }
-            if (items.isEmpty()) Text("Оповещений нет.")
-            if (data.items("items").size >= limit && limit < 500) OutlinedButton(onClick = { limit = (limit + 200).coerceAtMost(500) }) { Text("Загрузить больше") }
-            if (data.items("items").size >= 500) Text("Показаны последние 500 оповещений — предел журнала на сервере.")
         }
+        if (scopeName == "personal") AdminUserPicker(api, targetUser.takeIf { it > 0 }, { targetUser = it ?: 0 }, enabled = !busy, label = "Пользователь")
+        OutlinedTextField(title, { if (it.length <= 240) title = it }, label = { Text("Заголовок") }, singleLine = true, enabled = !busy, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(message, { if (it.length <= 20000) message = it }, label = { Text("Сообщение") }, minLines = 5, enabled = !busy, modifier = Modifier.fillMaxWidth())
+        Button(enabled = !busy && title.isNotBlank() && message.isNotBlank() && (scopeName == "global" || targetUser > 0), onClick = {
+            val payload = AdminPeopleContract.notification(JSONObject().put("scope", scopeName).put("target_user_id", targetUser).put("title", title).put("message", message))
+            busy = true; error = ""; notice = ""
+            coroutineScope.launch {
+                try { api.post("/api/admin/notifications", payload); title = ""; message = ""; notice = "Оповещение отправлено."; reload() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { error = failure.message.orEmpty() }
+                finally { busy = false }
+            }
+        }) { Text(if (scopeName == "global") "Отправить всем" else "Отправить выбранному") }
+        ErrorMessage(error)
+        if (notice.isNotBlank()) Text(notice, color = SiteColors.Accent)
+        Text("История оповещений", style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(onClick = reload) { Text("Обновить") }
+        data.items("items").forEach { item ->
+            SectionCard(item.optString("title")) {
+                Text("#${item.optLong("id")} · ${item.optString("created_at")}", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                Text(if (item.optString("scope") == "personal") "Личное: ${item.optString("target_username")} (#${item.optLong("target_user_id")})" else "Общее · получателей: ${item.optLong("recipients_count")}")
+                Text(item.optString("message"))
+                Text("Прочитано: ${item.optLong("read_count")}", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { scopeName = item.optString("scope", "global"); targetUser = item.optLong("target_user_id"); title = item.optString("title"); message = item.optString("message") }) { Text("Создать на основе") }
+                TextButton(onClick = { confirm = PeopleConfirmation("Удалить оповещение?", "Оповещение «${item.optString("title")}» пропадёт у всех его получателей.") { api.delete("/api/admin/notifications/${item.optLong("id")}"); reload() } }) { Text("Удалить") }
+            }
+        }
+        if (data.items("items").isEmpty()) Text("Оповещений нет.")
+        if (data.items("items").size >= limit && limit < 500) OutlinedButton(onClick = { limit = (limit + 200).coerceAtMost(500) }) { Text("Загрузить больше") }
     }
     PeopleConfirmDialog(confirm) { confirm = null }
 }

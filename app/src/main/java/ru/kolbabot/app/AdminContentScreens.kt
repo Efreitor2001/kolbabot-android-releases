@@ -2,6 +2,7 @@ package ru.kolbabot.app
 
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.text.Editable
 import android.text.Html
 import android.text.Spannable
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.res.ResourcesCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -62,26 +64,41 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     var notice by rememberSaveable(section) { mutableStateOf("") }
-    var search by rememberSaveable(section) { mutableStateOf("") }
     var editor by rememberSaveable(section) { mutableStateOf("") }
     var selected by rememberSaveable(section) { mutableStateOf("{}") }
+    var groupKey by rememberSaveable(section) { mutableStateOf("") }
+    // Keep catalog selection above the loading branch, which is removed while refreshing.
+    var catalogCategoryKey by rememberSaveable(section) { mutableStateOf("") }
+    var catalogSausageCategoryKey by rememberSaveable(section) { mutableStateOf("") }
+    var catalogSausageKey by rememberSaveable(section) { mutableStateOf("") }
     var deletion by remember { mutableStateOf<JSONObject?>(null) }
-    val title = mapOf("catalog" to "Категории и сорта", "handbook" to "Справочник", "articles" to "Статьи", "recipes" to "Рецептуры", "faq" to "Вопросы и ответы", "equipment" to "Оборудование")[section] ?: "Материалы"
+    val title = mapOf("catalog" to "Категории и сорта", "handbook" to "Редактор справочника", "articles" to "Редактор статей", "recipes" to "Рецептуры: текст и ингредиенты", "faq" to "Редактор FAQ", "equipment" to "Оборудование")[section] ?: "Материалы"
     LaunchedEffect(reload, section) {
         loading = true; error = ""
         try { bootstrap = api.get("/api/admin/bootstrap") }
         catch (e: Exception) { error = acError(e) } finally { loading = false }
     }
-    fun done() { editor = ""; notice = "Изменения сохранены."; reload++ }
+    fun done() { editor = ""; bootstrap = null; notice = "Изменения сохранены."; reload++ }
     fun edit(kind: String, row: JSONObject = JSONObject()) { selected = row.toString(); editor = kind; notice = "" }
     fun askDelete(label: String, path: String, body: JSONObject = JSONObject()) { deletion = JSONObject().put("label", label).put("path", path).put("body", body) }
-    BackHandler(editor.isNotBlank()) { editor = "" }
     val data = bootstrap
     val row = remember(selected) { JSONObject(selected) }
-    if (data != null && editor.isNotBlank()) {
+    deletion?.let { pending ->
+        AlertDialog(onDismissRequest = { if (!loading) deletion = null }, title = { Text("Подтвердите удаление") }, text = { Text(pending.getString("label")) }, confirmButton = {
+            TextButton(enabled = !loading, onClick = {
+                scope.launch {
+                    loading = true; error = ""
+                    try { api.delete(pending.getString("path"), pending.getJSONObject("body")); deletion = null; selected = "{}"; editor = ""; bootstrap = null; notice = "Удалено."; reload++ }
+                    catch (e: Exception) { error = acError(e); deletion = null } finally { loading = false }
+                }
+            }) { Text("Удалить") }
+        }, dismissButton = { TextButton(enabled = !loading, onClick = { deletion = null }) { Text("Отмена") } })
+    }
+    @Composable fun Editor() {
+        if (data == null || editor.isBlank()) return
         val categories = data.items("categories").map { it.optString("slug") to it.optString("title") }
         when (editor) {
-            "category-new", "category-edit" -> AdminEditForm(if (editor == "category-new") "Добавить категорию" else "Изменить категорию", (if (editor == "category-new") listOf(AdminField("slug", "Код в адресе (латиница)", required = true)) else emptyList()) + AdminField("title", "Название категории", required = true), row, { editor = "" }) { payload ->
+            "category-new", "category-edit" -> AdminEditForm(if (editor == "category-new") "Добавить категорию" else "Изменить категорию", (if (editor == "category-new") listOf(AdminField("slug", "Код в адресе (латиница)", required = true)) else emptyList()) + AdminField("title", "Название категории", required = true), row, { editor = "" }, embedded = true) { payload ->
                 if (editor == "category-new") { payload.put("slug", acSlug(payload.optString("slug"))); api.post("/api/admin/categories", payload) }
                 else api.patch("/api/admin/categories/${acPath(row.getString("slug"))}", payload)
                 done()
@@ -89,7 +106,7 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
             "sausage-new", "sausage-edit" -> {
                 val fresh = editor == "sausage-new"
                 val fields = (if (fresh) listOf(AdminField("category_slug", "Категория", "choice", true, categories)) else emptyList()) + listOf(AdminField(if (fresh) "display_name" else "new_display_name", "Название сорта", required = true), AdminField(if (fresh) "sausage_slug" else "new_sausage_slug", "Код в адресе (латиница)", required = true))
-                AdminEditForm(if (fresh) "Добавить сорт" else "Изменить сорт", fields, row, { editor = "" }) { payload ->
+                AdminEditForm(if (fresh) "Добавить сорт" else "Изменить сорт", fields, row, { editor = "" }, embedded = true) { payload ->
                     if (fresh) api.post("/api/admin/sausages", payload.put("sausage_slug", acSlug(payload.optString("sausage_slug"))))
                     else api.patch("/api/admin/sausages", payload.put("category_slug", row.getString("category_slug")).put("old_sausage_slug", row.getString("old_sausage_slug")).put("new_sausage_slug", acSlug(payload.optString("new_sausage_slug"))))
                     done()
@@ -100,7 +117,7 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
                 val newSection = editor == "handbook-new-section"
                 val fields = (if (!existing) listOf(AdminField("section", "Раздел", if (newSection) "text" else "choice", true, if (newSection) emptyList() else data.items("handbook_sections").map { it.optString("key") to it.optString("title") }), AdminField("key", "Код статьи (латиница)", required = true)) else emptyList()) +
                     listOf(AdminField("section_title", "Название раздела", required = newSection), AdminField("title", "Заголовок статьи", required = true), AdminField("text", "Текст статьи", "multiline", true), AdminField("link", "Дополнительная ссылка"))
-                AdminEditForm(if (existing) "Изменить статью справочника" else "Новая статья справочника", fields, row, { editor = "" }) { payload ->
+                AdminEditForm(if (existing) "Изменить статью справочника" else "Новая статья справочника", fields, row, { editor = "" }, embedded = true) { payload ->
                     val group = if (existing) row.getString("section") else acSlug(payload.getString("section"))
                     val article = if (existing) row.getString("key") else acSlug(payload.getString("key"))
                     require(group.isNotBlank() && article.isNotBlank()) { "Укажите коды раздела и статьи." }
@@ -108,7 +125,7 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
                     done()
                 }
             }
-            "faq-new", "faq-edit" -> AdminEditForm("Вопрос и ответ", listOf(AdminField("question", "Вопрос", "multiline", true), AdminField("answer", "Ответ", "multiline", true)), row, { editor = "" }) { payload ->
+            "faq-new", "faq-edit" -> AdminEditForm("Вопрос и ответ", listOf(AdminField("question", "Вопрос", "multiline", true), AdminField("answer", "Ответ", "multiline", true)), row, { editor = "" }, embedded = true) { payload ->
                 if (row.optInt("id") > 0) api.patch("/api/admin/faq/${row.optInt("id")}", payload) else api.post("/api/admin/faq", payload)
                 done()
             }
@@ -117,115 +134,118 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
             "comments" -> AdminArticleModeration(api, row.getInt("id"), { editor = "" })
             "recipe" -> AdminRecipeEditor(api, row, data, { editor = "" }, ::done)
         }
+    }
+    if (editor == "comments" && row.optInt("id") > 0) {
+        BackHandler { editor = "article" }
+        AdminArticleModeration(api, row.optInt("id")) { editor = "article" }
         return
     }
-    deletion?.let { pending ->
-        AlertDialog(onDismissRequest = { if (!loading) deletion = null }, title = { Text("Подтвердите удаление") }, text = { Text(pending.getString("label")) }, confirmButton = {
-            TextButton(enabled = !loading, onClick = {
-                scope.launch {
-                    loading = true; error = ""
-                    try { api.delete(pending.getString("path"), pending.getJSONObject("body")); deletion = null; notice = "Удалено."; reload++ }
-                    catch (e: Exception) { error = acError(e); deletion = null } finally { loading = false }
-                }
-            }) { Text("Удалить") }
-        }, dismissButton = { TextButton(enabled = !loading, onClick = { deletion = null }) { Text("Отмена") } })
-    }
-    Page(title, "Управление материалами сайта и приложения", onBack) {
-        BackHandler(search.isNotBlank()) { search = "" }
+    Page(title, onBack = onBack) {
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (error.isNotBlank()) ErrorMessage(error)
-        if (notice.isNotBlank()) Text(notice, color = MaterialTheme.colorScheme.primary)
-        OutlinedButton(enabled = !loading, onClick = { reload++ }) { Text("Обновить") }
+        ErrorMessage(error)
+        if (notice.isNotBlank()) Text(notice, color = SiteColors.Accent)
         if (data == null) return@Page
-        OutlinedTextField(search, { search = it }, label = { Text("Поиск") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         when (section) {
             "catalog" -> {
-                Button(onClick = { edit("category-new") }) { Text("Добавить категорию") }
-                if (data.items("categories").isNotEmpty()) OutlinedButton(onClick = { edit("sausage-new", JSONObject().put("category_slug", data.items("categories").first().optString("slug"))) }) { Text("Добавить сорт") }
-                data.items("categories").forEach { category ->
-                    val sausages = category.items("sausages")
-                    if (search.isBlank() || (category.optString("title") + sausages.joinToString { it.optString("display_name") }).contains(search, true)) AdminListEntry("content-category-${category.optString("slug")}", category.optString("title"), count = sausages.size, initiallyExpanded = search.isNotBlank()) {
-                        Text("Код: ${category.optString("slug")} · Сортов: ${sausages.size}", style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { edit("category-edit", category) }) { Text("Изменить категорию") }
-                            TextButton(onClick = { askDelete("Удалить категорию «${category.optString("title") }» вместе со списком сортов в меню?", "/api/admin/categories/${acPath(category.getString("slug"))}") }) { Text("Удалить") }
-                        }
-                        sausages.forEach { sausage ->
-                            AdminListEntry("content-sausage-${category.optString("slug")}-${sausage.optString("slug")}", sausage.optString("display_name")) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { edit("sausage-edit", JSONObject().put("category_slug", category.getString("slug")).put("old_sausage_slug", sausage.getString("slug")).put("new_sausage_slug", sausage.getString("slug")).put("new_display_name", sausage.getString("display_name"))) }) { Text("Изменить сорт") }
-                                    TextButton(onClick = { askDelete("Убрать сорт «${sausage.optString("display_name") }» из категории?", "/api/admin/sausages", JSONObject().put("category_slug", category.getString("slug")).put("sausage_slug", sausage.getString("slug"))) }) { Text("Удалить") }
-                                }
-                            }
-                        }
+                AcCatalogInline(api, data, !loading, onChanged = ::done, onError = { error = it },
+                    onNewCategory = { edit("category-new") }, onNewSausage = { category -> edit("sausage-new", JSONObject().put("category_slug", category)) },
+                    onDelete = ::askDelete,
+                    categoryKey = catalogCategoryKey, onCategorySelected = { catalogCategoryKey = it },
+                    sausageCategoryKey = catalogSausageCategoryKey, onSausageCategorySelected = { catalogSausageCategoryKey = it; catalogSausageKey = "" },
+                    sausageKey = catalogSausageKey, onSausageSelected = { catalogSausageKey = it })
+                if (editor.isNotBlank()) key(editor, selected) { Editor() }
+            }
+            "handbook", "recipes" -> {
+                val handbook = section == "handbook"
+                val groups = data.items(if (handbook) "handbook_sections" else "categories")
+                val groupId = if (handbook) "key" else "slug"
+                val group = groups.firstOrNull { it.optString(groupId) == groupKey } ?: groups.firstOrNull()
+                val entries = group?.items(if (handbook) "articles" else "sausages").orEmpty()
+                val entryId = if (handbook) "key" else "slug"
+                val entryTitle = if (handbook) "title" else "display_name"
+                fun rowFor(entry: JSONObject): JSONObject = JSONObject(entry.toString()).apply {
+                    if (handbook) { put("section", group?.optString("key")); put("section_title", group?.optString("title")) }
+                    else put("category_slug", group?.optString("slug"))
+                }
+                LaunchedEffect(data, groupKey, editor) {
+                    if (editor.isBlank() && entries.isNotEmpty()) {
+                        val entry = entries.firstOrNull { it.optString(entryId) == row.optString(entryId) } ?: entries.first()
+                        selected = rowFor(entry).toString(); editor = if (handbook) "handbook-edit" else "recipe"
                     }
                 }
+                SiteSelect(if (handbook) "Раздел" else "Категория", group?.optString(groupId).orEmpty(), groups.map { it.optString(groupId) to it.optString("title") }, {
+                    groupKey = it; selected = "{}"; editor = ""
+                })
+                SiteSelect(if (handbook) "Статья" else "Сорт", row.optString(entryId), entries.map { it.optString(entryId) to it.optString(entryTitle) }, { key ->
+                    entries.firstOrNull { it.optString(entryId) == key }?.let { edit(if (handbook) "handbook-edit" else "recipe", rowFor(it)) }
+                })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { edit(if (handbook) "handbook-new" else "recipe", JSONObject().put(if (handbook) "section" else "category_slug", group?.optString(groupId).orEmpty())) }) { Text(if (handbook) "Новая" else "Новый рецепт") }
+                    if (handbook && row.optString("key").isNotBlank()) TextButton(onClick = { askDelete("Удалить статью «${row.optString("title")}»?", "/api/admin/handbook/${acPath(row.optString("section"))}/${acPath(row.optString("key"))}") }) { Text("Удалить") }
+                }
+                if (handbook) TextButton(onClick = { edit("handbook-new-section") }) { Text("Создать раздел и статью") }
+                key(editor, selected) { CompositionLocalProvider(LocalAcInline provides true) { Editor() } }
             }
-            "handbook" -> {
-                if (data.items("handbook_sections").isNotEmpty()) Button(onClick = { edit("handbook-new", JSONObject().put("section", data.items("handbook_sections").first().optString("key"))) }) { Text("Добавить статью") }
-                OutlinedButton(onClick = { edit("handbook-new-section") }) { Text("Создать раздел и статью") }
-                data.items("handbook_sections").forEach { group ->
-                    val articles = group.items("articles").filter { search.isBlank() || (it.optString("title") + " " + it.optString("text") + group.optString("title")).contains(search, true) }
-                    if (articles.isNotEmpty()) AdminListEntry("content-handbook-${group.optString("key")}", group.optString("title"), count = articles.size, initiallyExpanded = search.isNotBlank()) {
-                        articles.forEach { article ->
-                            AdminListEntry("content-handbook-article-${group.optString("key")}-${article.optString("key")}", article.optString("title")) {
-                                Text(plainText(article.optString("text")).take(180))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { edit("handbook-edit", JSONObject(article.toString()).put("section", group.optString("key")).put("section_title", group.optString("title"))) }) { Text("Редактировать") }
-                                    TextButton(onClick = { askDelete("Удалить статью «${article.optString("title") }»?", "/api/admin/handbook/${acPath(group.getString("key"))}/${acPath(article.getString("key"))}") }) { Text("Удалить") }
-                                }
-                            }
-                        }
+            else -> {
+                val items = data.items(section)
+                val kind = when (section) { "faq" -> "faq-edit"; "equipment" -> "equipment"; else -> "article" }
+                val titleKey = if (section == "faq") "question" else "title"
+                LaunchedEffect(data, editor) {
+                    if (editor.isBlank() && items.isNotEmpty()) {
+                        selected = (items.firstOrNull { it.optInt("id") == row.optInt("id") } ?: items.first()).toString(); editor = kind
                     }
                 }
-            }
-            "articles" -> {
-                Button(onClick = { edit("article") }) { Text("Создать статью") }
-                data.items("articles").filter { search.isBlank() || (it.optString("title") + " " + it.optString("excerpt")).contains(search, true) }.forEach { article ->
-                    AdminListEntry("content-article-${article.optInt("id")}", article.optString("title"),
-                        (if (article.optBoolean("is_published")) "Опубликована" else "Черновик") + if (article.optBoolean("is_premium")) " · PREMIUM" else " · Для всех") {
-                        Text(article.optString("excerpt"))
-                        TextButton(onClick = { edit("article", article) }) { Text("Редактировать") }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { edit("comments", article) }) { Text("Комментарии (${article.optInt("comments_count")})") }
-                            TextButton(onClick = { askDelete("Удалить статью «${article.optString("title") }» и её обсуждение?", "/api/admin/articles/${article.optInt("id")}") }) { Text("Удалить") }
-                        }
-                    }
+                SiteSelect(when (section) { "faq" -> "Запись FAQ"; "equipment" -> "Позиция оборудования"; else -> "Статья" }, row.optInt("id").takeIf { it > 0 }?.toString().orEmpty(), items.map { it.optInt("id").toString() to it.optString(titleKey) }, { id ->
+                    items.firstOrNull { it.optInt("id").toString() == id }?.let { edit(kind, it) }
+                })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { edit(if (section == "faq") "faq-new" else kind, if (section == "equipment") JSONObject().put("is_active", true).put("sort_order", 100).put("buy_label", "Купить") else JSONObject()) }) { Text(if (section == "articles") "Новая статья" else "Новая") }
+                    if (row.optInt("id") > 0) TextButton(onClick = { askDelete("Удалить «${row.optString(titleKey)}»?", "/api/admin/$section/${row.optInt("id")}") }) { Text("Удалить") }
+                    if (section == "articles" && row.optInt("id") > 0) TextButton(onClick = { editor = "comments" }) { Text("Комментарии (${row.optInt("comments_count")})") }
                 }
-            }
-            "recipes" -> {
-                if (data.items("categories").isNotEmpty()) Button(onClick = { edit("recipe", JSONObject().put("category_slug", data.items("categories").first().getString("slug"))) }) { Text("Создать рецепт") }
-                else Text("Сначала добавьте категорию в разделе «Категории и сорта».")
-                data.items("categories").forEach { category ->
-                    val recipes = category.items("sausages").filter { search.isBlank() || (it.optString("display_name") + " " + category.optString("title")).contains(search, true) }
-                    if (recipes.isNotEmpty()) AdminListEntry("content-recipes-${category.optString("slug")}", category.optString("title"), count = recipes.size, initiallyExpanded = search.isNotBlank()) {
-                        recipes.forEach { recipe -> TextButton(onClick = { edit("recipe", JSONObject(recipe.toString()).put("category_slug", category.getString("slug"))) }, modifier = Modifier.fillMaxWidth()) { Text(recipe.optString("display_name"), modifier = Modifier.fillMaxWidth()) } }
-                    }
-                }
-            }
-            "faq" -> {
-                Button(onClick = { edit("faq-new") }) { Text("Добавить вопрос") }
-                AdminUploadButton(api, "/api/admin/import/faq-excel", "Импорт FAQ из Excel", arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"), onUploaded = { result -> notice = result.optString("result", "Импорт завершён."); reload++ })
-                data.items("faq").filter { search.isBlank() || (it.optString("question") + " " + it.optString("answer")).contains(search, true) }.forEach { faq -> AdminListEntry("content-faq-${faq.optInt("id")}", faq.optString("question")) {
-                    Text(plainText(faq.optString("answer")))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { edit("faq-edit", faq) }) { Text("Редактировать") }
-                        TextButton(onClick = { askDelete("Удалить вопрос «${faq.optString("question") }»?", "/api/admin/faq/${faq.optInt("id")}") }) { Text("Удалить") }
-                    }
-                } }
-            }
-            "equipment" -> {
-                Button(onClick = { edit("equipment", JSONObject().put("is_active", true).put("sort_order", 100).put("buy_label", "Купить")) }) { Text("Добавить оборудование") }
-                data.items("equipment").filter { search.isBlank() || (it.optString("title") + " " + it.optString("category_name")).contains(search, true) }.forEach { item -> AdminListEntry("content-equipment-${item.optInt("id")}", item.optString("title"),
-                    item.optString("category_name") + if (acBool(item, "is_active")) " · Видно пользователям" else " · Скрыто") {
-                    Text(plainText(item.optString("description")).take(200))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { edit("equipment", item) }) { Text("Редактировать") }
-                        TextButton(onClick = { askDelete("Удалить оборудование «${item.optString("title") }»?", "/api/admin/equipment/${item.optInt("id")}") }) { Text("Удалить") }
-                    }
-                } }
+                key(editor, selected) { CompositionLocalProvider(LocalAcInline provides true) { Editor() } }
+                if (section == "faq") AdminUploadButton(api, "/api/admin/import/faq-excel", "Импорт FAQ из Excel", arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"), onUploaded = { result -> notice = result.optString("result", "Импорт завершён."); reload++ })
             }
         }
+    }
+}
+
+private val LocalAcInline = staticCompositionLocalOf { false }
+
+@Composable private fun AcEditorPage(title: String, subtitle: String = "", onBack: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    if (LocalAcInline.current) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+    else Page(title, subtitle, onBack, content = content)
+}
+
+@Composable private fun AcCatalogInline(api: ApiClient, data: JSONObject, enabled: Boolean, onChanged: () -> Unit, onError: (String) -> Unit,
+    onNewCategory: () -> Unit, onNewSausage: (String) -> Unit, onDelete: (String, String, JSONObject) -> Unit,
+    categoryKey: String, onCategorySelected: (String) -> Unit,
+    sausageCategoryKey: String, onSausageCategorySelected: (String) -> Unit,
+    sausageKey: String, onSausageSelected: (String) -> Unit) {
+    val categories = data.items("categories")
+    val category = categories.firstOrNull { it.optString("slug") == categoryKey } ?: categories.firstOrNull()
+    val sausageCategory = categories.firstOrNull { it.optString("slug") == sausageCategoryKey } ?: categories.firstOrNull()
+    val sausages = sausageCategory?.items("sausages").orEmpty()
+    val sausage = sausages.firstOrNull { it.optString("slug") == sausageKey } ?: sausages.firstOrNull()
+    var categoryTitle by remember(data, category?.optString("slug")) { mutableStateOf(category?.optString("title").orEmpty()) }
+    var sausageTitle by remember(data, sausage?.optString("slug")) { mutableStateOf(sausage?.optString("display_name").orEmpty()) }
+    var busy by remember { mutableStateOf(false) }; val scope = rememberCoroutineScope()
+    fun save(block: suspend () -> Unit) { busy = true; scope.launch { try { block(); onChanged() } catch (failure: Exception) { onError(acError(failure)) } finally { busy = false } } }
+    SiteSelect("Категория", category?.optString("slug").orEmpty(), categories.map { it.optString("slug") to it.optString("title") }, onCategorySelected, enabled = enabled && !busy)
+    AcField("Название категории", categoryTitle, enabled && !busy) { categoryTitle = it }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onNewCategory, enabled = enabled && !busy) { Text("Новая") }
+        Button(enabled = enabled && !busy && category != null && categoryTitle.isNotBlank(), onClick = { save { api.patch("/api/admin/categories/${acPath(category!!.getString("slug"))}", JSONObject().put("title", categoryTitle.trim())) } }) { Text("Сохранить") }
+        TextButton(enabled = enabled && !busy && category != null, onClick = { onDelete("Удалить категорию «${category?.optString("title") }»?", "/api/admin/categories/${acPath(category!!.getString("slug"))}", JSONObject()) }) { Text("Удалить") }
+    }
+    HorizontalDivider()
+    SiteSelect("Категория для сорта", sausageCategory?.optString("slug").orEmpty(), categories.map { it.optString("slug") to it.optString("title") }, onSausageCategorySelected, enabled = enabled && !busy)
+    SiteSelect("Сорт", sausage?.optString("slug").orEmpty(), sausages.map { it.optString("slug") to it.optString("display_name") }, onSausageSelected, enabled = enabled && !busy)
+    AcField("Название сорта", sausageTitle, enabled && !busy) { sausageTitle = it }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { onNewSausage(sausageCategory?.optString("slug").orEmpty()) }, enabled = enabled && !busy && sausageCategory != null) { Text("Новый") }
+        Button(enabled = enabled && !busy && sausage != null && sausageTitle.isNotBlank(), onClick = { save { api.patch("/api/admin/sausages", JSONObject().put("category_slug", sausageCategory!!.getString("slug")).put("old_sausage_slug", sausage!!.getString("slug")).put("new_sausage_slug", sausage.getString("slug")).put("new_display_name", sausageTitle.trim())) } }) { Text("Сохранить") }
+        TextButton(enabled = enabled && !busy && sausage != null, onClick = { onDelete("Удалить сорт «${sausage?.optString("display_name") }»?", "/api/admin/sausages", JSONObject().put("category_slug", sausageCategory!!.getString("slug")).put("sausage_slug", sausage!!.getString("slug"))) }) { Text("Удалить") }
     }
 }
 
@@ -236,25 +256,12 @@ private fun AcField(label: String, value: String, enabled: Boolean = true, multi
 
 @Composable
 private fun AcChoice(label: String, selected: String, choices: List<Pair<String, String>>, enabled: Boolean = true, onSelect: (String) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    Text(label, style = MaterialTheme.typography.labelLarge)
-    OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) { Text((choices.firstOrNull { it.first == selected }?.second ?: selected.ifBlank { "Выберите" }) + " ▾") }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text(label) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (choices.size > 8) AcField("Поиск", query) { query = it }
-            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
-                choices.filter { query.isBlank() || it.second.contains(query, true) }.forEach { (value, title) ->
-                    TextButton(onClick = { onSelect(value); open = false; query = "" }, modifier = Modifier.fillMaxWidth()) { Text((if (selected == value) "✓ " else "") + title, modifier = Modifier.fillMaxWidth()) }
-                }
-            }
-        }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("Закрыть") } })
+    SiteSelect(label, selected, choices, onSelect, enabled = enabled)
 }
 
 @Composable
 private fun AcToggle(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, Modifier.weight(1f)); Switch(checked, onChange, enabled = enabled) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, Modifier.weight(1f)); Checkbox(checked, onChange, enabled = enabled) }
 }
 
 @Composable
@@ -279,7 +286,7 @@ private fun AdminEquipmentEditor(api: ApiClient, initial: JSONObject, onBack: ()
     var error by remember { mutableStateOf("") }
     val data = JSONObject(draft)
     fun set(key: String, value: Any) { draft = JSONObject(draft).put(key, value).toString() }
-    Page(if (initial.optInt("id") > 0) "Редактор оборудования" else "Новое оборудование", onBack = onBack) {
+    AcEditorPage(if (initial.optInt("id") > 0) "Редактор оборудования" else "Новое оборудование", onBack = onBack) {
         AcField("Название", acText(data, "title"), !busy) { set("title", it) }
         AcField("Название категории", acText(data, "category_name"), !busy) { set("category_name", it); if (initial.optInt("id") == 0 && acText(data, "category_slug").isBlank()) set("category_slug", acSlug(it)) }
         AcField("Код категории (латиница)", acText(data, "category_slug"), !busy) { set("category_slug", it) }
@@ -316,7 +323,7 @@ private fun AdminArticleEditor(api: ApiClient, initial: JSONObject, onBack: () -
     var preview by remember { mutableStateOf(false) }
     val data = JSONObject(draft)
     fun set(key: String, value: Any) { draft = JSONObject(draft).put(key, value).toString() }
-    Page(if (initial.optInt("id") > 0) "Редактор статьи" else "Новая статья", onBack = onBack) {
+    AcEditorPage(if (initial.optInt("id") > 0) "Редактор статьи" else "Новая статья", onBack = onBack) {
         AcField("Заголовок", acText(data, "title"), !busy) { set("title", it) }
         AcField("Код в адресе (можно оставить пустым)", acText(data, "slug"), !busy) { set("slug", it) }
         AcField("Краткое описание", acText(data, "excerpt"), !busy, multiline = true) { set("excerpt", it) }
@@ -469,6 +476,18 @@ private fun AcArticleTextEditor(api: ApiClient, html: String, enabled: Boolean, 
     AndroidView(factory = { nativeContext ->
         EditText(nativeContext).apply {
             minLines = 10; textSize = 16f; gravity = android.view.Gravity.TOP
+            typeface = ResourcesCompat.getFont(nativeContext, R.font.manrope_regular)
+            includeFontPadding = false
+            setLineSpacing(0f, 1.65f)
+            val density = resources.displayMetrics.density
+            val inset = (16 * density).toInt()
+            setPadding(inset, inset, inset, inset)
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.WHITE)
+                cornerRadius = 12 * density
+                setStroke(density.toInt().coerceAtLeast(1), SiteColors.Border.toArgb())
+            }
+            backgroundTintList = null
             setSingleLine(false); setTextColor(foreground)
             setText(acStyledArticle(html))
             addTextChangedListener(object : TextWatcher {
@@ -607,10 +626,10 @@ private fun AdminRecipeEditor(api: ApiClient, selected: JSONObject, bootstrap: J
         }
         return
     }
-    Page(if (isNew) "Новый рецепт" else "Редактор рецепта", onBack = onBack) {
+    AcEditorPage(if (isNew) "Новый рецепт" else "Редактор рецепта", onBack = onBack) {
         if (loading || busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (error.isNotBlank()) ErrorMessage(error)
-        if (draft.isBlank()) { OutlinedButton(enabled = !loading, onClick = { reload++ }) { Text("Повторить загрузку") }; return@Page }
+        if (draft.isBlank()) { OutlinedButton(enabled = !loading, onClick = { reload++ }) { Text("Повторить загрузку") }; return@AcEditorPage }
         AcField("Название рецепта", acText(data, "display_name"), !busy) { set("display_name", it) }
         if (isNew) {
             AcField("Код в адресе (можно оставить пустым)", acText(data, "slug"), !busy) { set("slug", it) }
@@ -654,7 +673,7 @@ private fun AdminIngredientEditor(initial: JSONObject, products: List<JSONObject
     fun set(key: String, value: Any) { draft = JSONObject(draft).put(key, value).toString() }
     fun setOption(index: Int, key: String, value: Any) { val current = JSONObject(draft); current.getJSONArray("options").getJSONObject(index).put(key, value); draft = current.toString() }
     val productOptions = listOf("0" to "Не привязывать к магазину") + products.map { it.optLong("id").toString() to (it.optString("title") + " · " + money(it.optLong("price_kopecks"))) }
-    Page("Ингредиент", "Количество указывается на 1 кг рецепта", onBack) {
+    AcEditorPage("Ингредиент", "Количество указывается на 1 кг рецепта", onBack) {
         AcField("Название ингредиента или группы вариантов", acText(data, "full_name")) { set("full_name", it) }
         AcField("Количество или текст (например, 20 или «по вкусу»)", acText(data, "quantity")) { set("quantity", it) }
         AcField("Ключ цены", acText(data, "short_label")) { set("short_label", it) }

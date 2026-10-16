@@ -54,7 +54,7 @@ private var clipboardConfirmation: Toast? = null
 }
 
 @Composable fun AdminEditForm(title: String, fields: List<AdminField>, initial: JSONObject = JSONObject(), onBack: () -> Unit,
-    userApi: ApiClient? = null, onSave: suspend (JSONObject) -> Unit) {
+    embedded: Boolean = false, userApi: ApiClient? = null, saveLabel: String = "Сохранить", onSave: suspend (JSONObject) -> Unit) {
     var draft by rememberSaveable(title, initial.toString()) { mutableStateOf(initial.toString()) }
     var privateValues by remember(title) { mutableStateOf(mapOf<String, String>()) }
     var busy by remember { mutableStateOf(false) }; var error by remember { mutableStateOf("") }
@@ -67,8 +67,8 @@ private var clipboardConfirmation: Toast? = null
         else draft = JSONObject(draft).put(field.key, value).toString()
     }
     fun leave() { if (!busy) { if (draft != initial.toString() || privateValues.values.any { it.isNotBlank() }) discard = true else onBack() } }
-    BackHandler { leave() }
-    Page(title, onBack = { leave() }) {
+    BackHandler(!embedded) { leave() }
+    val form: @Composable ColumnScope.() -> Unit = {
         ErrorMessage(error)
         visibleFields.forEach { field ->
             val value = if (field.kind == "password") privateValues[field.key].orEmpty() else data.opt(field.key)?.takeUnless { it == JSONObject.NULL }?.toString().orEmpty()
@@ -78,19 +78,9 @@ private var clipboardConfirmation: Toast? = null
                     allowEmpty = !field.required, tag = "admin-user-${field.key}")
                 "bool" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(field.label, Modifier.weight(1f))
-                    Switch(checked = value == "true" || value == "1", enabled = !busy, onCheckedChange = { set(field, it) })
+                    Checkbox(checked = value == "true" || value == "1", enabled = !busy, onCheckedChange = { set(field, it) })
                 }
-                "choice" -> {
-                    var expanded by remember { mutableStateOf(false) }
-                    Box {
-                        OutlinedButton(enabled = !busy, onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-                            Text("${field.label}: ${field.options.find { it.first == value }?.second ?: value.ifBlank { "Выберите" }} ▾")
-                        }
-                        DropdownMenu(expanded, { expanded = false }) { field.options.forEach { option ->
-                            DropdownMenuItem(text = { Text(option.second) }, onClick = { set(field, option.first); expanded = false })
-                        } }
-                    }
-                }
+                "choice" -> SiteSelect(field.label, value, field.options, { set(field, it) }, enabled = !busy)
                 else -> OutlinedTextField(value, { set(field, it) }, label = { Text(field.label + if (field.required) " *" else "") }, enabled = !busy,
                     singleLine = field.kind != "multiline", minLines = if (field.kind == "multiline") 3 else 1,
                     visualTransformation = if (field.kind == "password") PasswordVisualTransformation() else VisualTransformation.None,
@@ -122,8 +112,10 @@ private var clipboardConfirmation: Toast? = null
                     finally { busy = false }
                 }
             } catch (failure: Exception) { error = failure.message.orEmpty() }
-        }) { Text(if (busy) "Сохраняем…" else "Сохранить") }
+        }) { Text(if (busy) "Сохраняем…" else saveLabel) }
     }
+    if (embedded) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), content = form)
+    else Page(title, onBack = { leave() }, content = form)
     if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text("Оставить изменения несохранёнными?") }, text = { Text("Изменения этой формы ещё не отправлены на сервер.") },
         confirmButton = { TextButton(onClick = { discard = false; privateValues = emptyMap(); onBack() }) { Text("Выйти без сохранения") } }, dismissButton = { TextButton(onClick = { discard = false }) { Text("Продолжить редактирование") } })
 }

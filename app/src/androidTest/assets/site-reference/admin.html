@@ -1,0 +1,1739 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Колбабот · Админка</title>
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="canonical" href="https://kolbabot.ru/admin">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=20261015-native-banners-1">
+</head>
+<body data-mode="admin">
+<div id="globalLoading" class="global-loading hidden" aria-hidden="true"></div>
+<div class="bg-noise" aria-hidden="true"></div>
+<div class="app-shell">
+  <header class="hero">
+    <div class="hero__content">
+      <p class="kicker">Админка</p>
+      <h1>Колбабот Admin</h1>
+      <p id="welcomeText">Инициализация…</p>
+      <div class="stats" id="homeStats"></div>
+    </div>
+    <div class="hero__meta">
+      <div class="meta-card">
+        <span class="meta-card__label">Пользователь</span>
+        <strong id="userIdBadge">—</strong>
+      </div>
+      <div class="meta-card">
+        <span class="meta-card__label">Роль</span>
+        <strong id="userRoleBadge">Гость</strong>
+      </div>
+      <div class="meta-card">
+        <span class="meta-card__label">Уровень</span>
+        <strong id="userTierBadge">—</strong>
+      </div>
+      <button id="logoutBtn" type="button" class="chip hidden">Выйти</button>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Разделы">
+    <div class="tabs-scroll">
+      <button class="tab is-active" data-tab="home">Магазин</button>
+      <button class="tab" data-tab="recipes">Рецепты</button>
+      <button class="tab" data-tab="custom">Свой расчёт</button>
+      <button class="tab" data-tab="handbook">Справочник</button>
+      <button class="tab" data-tab="articles">Статьи</button>
+      <button class="tab" data-tab="equipment">Оборудование</button>
+      <button class="tab" data-tab="faq">FAQ</button>
+      <button class="tab" data-tab="support">Поддержка</button>
+      <button class="tab hidden" data-tab="paywall" id="paywallTabBtn">Доступ</button>
+      <button class="tab hidden" data-tab="admin" id="adminTabBtn">Админ</button>
+    </div>
+    <div class="nav-actions">
+      <div class="notifications-wrap" id="notificationsWrap">
+        <button type="button" class="notification-btn hidden" id="notificationsBtn" aria-label="Уведомления" aria-expanded="false" aria-controls="notificationsPopover">
+          <svg class="notification-btn__icon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M10 21a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="notificationsBadge" class="notification-badge hidden">0</span>
+        </button>
+        <section id="notificationsPopover" class="notifications-popover hidden" aria-label="Уведомления">
+          <header>
+            <strong>Уведомления</strong>
+            <span class="notifications-popover__actions">
+              <button type="button" id="notificationsReadAllBtn" class="chip mini">Прочитать все</button>
+              <button type="button" id="notificationsClearBtn" class="chip mini">Очистить</button>
+            </span>
+          </header>
+          <div id="notificationsList" class="notifications-list muted">Уведомлений пока нет.</div>
+        </section>
+      </div>
+    </div>
+  </nav>
+
+  <section id="accessAlert" class="card hidden"></section>
+
+  <main>
+
+    <section id="tab-home" class="panel is-active" aria-label="Магазин">
+      <article class="card card--accent">
+        <div class="form-row">
+          <h2>Магазин</h2>
+          <span id="cartSummary" class="chip">Корзина: 0</span>
+        </div>
+        <div id="homeAccessInfo" class="hidden"></div>
+        <div id="guestIntroCta" class="guest-intro hidden"></div>
+        <div id="storeCategories" class="quick-actions"></div>
+        <div id="storeGrid" class="equipment-grid"></div>
+      </article>
+      <article class="card">
+        <h2>Корзина</h2>
+        <div id="cartItems" class="ticket-list muted">Корзина пуста.</div>
+        <form id="checkoutForm" class="checkout-form">
+          <div class="grid-two">
+            <label class="field"><span>ФИО</span><input name="customer_name" type="text" autocomplete="name" required aria-describedby="checkoutBookNameHint"><small id="checkoutBookNameHint" class="muted hidden" hidden>Это имя будет указано в вашем персональном экземпляре книги.</small></label>
+            <label class="field"><span>Телефон</span><input name="phone" type="tel" autocomplete="tel" required></label>
+          </div>
+          <label id="checkoutAddressField" class="field"><span>Адрес пункта выдачи заказов</span><textarea name="address" rows="3" autocomplete="street-address" required></textarea></label>
+          <label id="checkoutDeliveryMethodField" class="field"><span>Способ доставки</span><select id="deliveryMethodSelect" name="delivery_method" required></select></label>
+          <label id="digitalDeliveryEmailField" class="field hidden" hidden><span>E-mail для доставки цифровых товаров</span><input name="digital_delivery_email" type="email" autocomplete="email"></label>
+          <div id="cartTotal" class="calc-result muted">Итого: 0 ₽</div>
+          <button type="submit">Оформить и оплатить через Т-Банк</button>
+        </form>
+        <div id="checkoutResult" class="muted"></div>
+      </article>
+    </section>
+    <section id="tab-recipes" class="panel" aria-label="Рецепты">
+      <article class="card">
+        <h2>Готовые рецепты</h2>
+        <div class="form-row">
+          <label class="field">
+            <span>Категория</span>
+            <select id="categorySelect"></select>
+          </label>
+          <label class="field">
+            <span>Сорт</span>
+            <select id="sausageSelect"></select>
+          </label>
+        </div>
+        <div class="recipe-layout">
+          <article class="card card-inner">
+            <div class="form-row">
+              <h3 id="recipeTitle">Выберите рецепт</h3>
+            </div>
+            <img id="recipeImage" alt="Фото рецепта" class="recipe-image hidden" loading="lazy">
+            <p id="recipeText" class="pre-wrap muted">Текст рецепта и ингредиенты появятся здесь.</p>
+            <div class="ingredients" id="recipeIngredients"></div>
+          </article>
+          <article class="card card-inner">
+            <h3>Калькулятор по рецепту</h3>
+            <form id="recipeCalcForm" class="form-row">
+              <label class="field">
+                <span>Вес партии (кг)</span>
+                <input type="number" name="weight" min="1" value="1" required autocomplete="off" inputmode="decimal">
+              </label>
+              <button type="submit">Рассчитать</button>
+            </form>
+            <div id="recipeCalcResult" class="calc-result muted">Сначала выберите сорт, затем нажмите «Рассчитать».</div>
+            <div class="inline-actions" style="margin-top:12px;">
+              <button type="button" id="recipeAddToCartBtn" class="chip">Добавить ингредиенты в корзину</button>
+              <button type="button" id="recipePrintPdfBtn" class="chip">Распечатать PDF</button>
+            </div>
+          </article>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-custom" class="panel" aria-label="Свой расчёт">
+      <article class="card">
+        <h2>Рассчитать свою колбасу</h2>
+        <p class="muted">Поля: название, граммы на 1 кг, цена за кг/л/м.</p>
+        <form id="customCalcForm">
+          <div class="form-row">
+            <label class="field">
+              <span>Вес партии (кг)</span>
+              <input type="number" name="weight" step="0.1" min="0.1" value="1.0" required autocomplete="off" inputmode="decimal">
+            </label>
+          </div>
+          <input type="hidden" name="lines" value="">
+          <div class="field">
+            <span>Ингредиенты</span>
+            <div id="customIngredientsRows" class="ingredients-editor"></div>
+            <div class="custom-add-row-wrap">
+              <button type="button" id="customAddIngredientRow" class="chip">+ Добавить</button>
+            </div>
+          </div>
+          <button type="submit">Посчитать</button>
+        </form>
+        <div id="customCalcResult" class="calc-result muted">Результат расчёта появится здесь.</div>
+        <div class="inline-actions" style="margin-top:12px;">
+          <button type="button" id="customPrintPdfBtn" class="chip">Распечатать PDF</button>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-handbook" class="panel" aria-label="Справочник">
+      <article class="card">
+        <h2>Справочник</h2>
+        <div class="form-row">
+          <label class="field">
+            <span>Раздел</span>
+            <select id="handbookSectionSelect"></select>
+          </label>
+          <label class="field">
+            <span>Статья</span>
+            <select id="handbookArticleSelect"></select>
+          </label>
+        </div>
+        <article class="card card-inner">
+          <h3 id="handbookArticleTitle">Статья</h3>
+          <p id="handbookArticleText" class="pre-wrap muted">Выберите статью.</p>
+          <a id="handbookArticleLink" href="#" target="_blank" rel="noopener" class="button-link hidden">Открыть ссылку</a>
+        </article>
+      </article>
+    </section>
+
+    <section id="tab-articles" class="panel" aria-label="Статьи">
+      <article class="card articles-shell">
+        <header class="articles-heading">
+          <div>
+            <p class="kicker">Полезные материалы</p>
+            <h2>Статьи</h2>
+          </div>
+          <p class="muted">Практика, технологии и разборы от команды Колбабота.</p>
+        </header>
+        <div class="articles-layout">
+          <aside id="articlesList" class="articles-list" aria-label="Список статей">
+            <div class="muted">Загрузка статей…</div>
+          </aside>
+          <article id="articleDetail" class="article-detail card card-inner">
+            <div id="articleEmpty" class="article-empty muted">Выберите статью в списке.</div>
+            <div id="articleView" class="hidden">
+              <img id="articleCover" class="article-cover hidden" alt="" loading="lazy">
+              <div class="article-meta-row">
+                <div class="article-meta">
+                  <span id="articlePublishedAt"></span>
+                  <span id="articleAuthor"></span>
+                </div>
+                <button type="button" id="articleShareBtn" class="dialog-share-btn article-share-btn">Поделиться</button>
+              </div>
+              <h2 id="articleTitle"></h2>
+              <div id="articleContent" class="article-content"></div>
+              <div class="article-reactions" aria-label="Оценка статьи">
+                <button type="button" id="articleLikeBtn" class="reaction-btn" aria-label="Нравится">👍 <span>0</span></button>
+                <button type="button" id="articleDislikeBtn" class="reaction-btn" aria-label="Не нравится">👎 <span>0</span></button>
+              </div>
+              <section class="article-comments" aria-labelledby="articleCommentsTitle">
+                <div class="article-comments__head">
+                  <h3 id="articleCommentsTitle">Комментарии</h3>
+                  <span id="articleCommentsCount" class="chip">0</span>
+                </div>
+                <form id="articleCommentForm" class="article-comment-form">
+                  <label class="field">
+                    <span>Ваш комментарий</span>
+                    <textarea id="articleCommentText" rows="3" maxlength="5000" placeholder="Поделитесь мнением — только текст, без фотографий"></textarea>
+                  </label>
+                  <button type="submit">Отправить</button>
+                </form>
+                <p id="articleCommentLoginHint" class="muted hidden">Чтобы комментировать и ставить оценки, войдите в аккаунт.</p>
+                <div id="articleCommentsList" class="article-comments-list muted">Комментариев пока нет.</div>
+              </section>
+            </div>
+          </article>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-equipment" class="panel" aria-label="Оборудование">
+      <article class="card">
+        <h2>Оборудование</h2>
+        <p class="muted">Нажмите на карточку, чтобы открыть описание и ссылку на магазин.</p>
+        <div id="equipmentGrid" class="equipment-grid"></div>
+      </article>
+    </section>
+
+    <section id="tab-faq" class="panel" aria-label="FAQ">
+      <article class="card">
+        <h2>Частые вопросы</h2>
+        <div id="faqList" class="faq-list"></div>
+      </article>
+    </section>
+
+    <section id="tab-support" class="panel" aria-label="Поддержка">
+      <article class="card">
+        <h2>Поддержка</h2>
+        <p class="muted">Опишите вопрос — администратор ответит в этом разделе.</p>
+        <form id="supportForm">
+          <label class="field">
+            <span>Сообщение</span>
+            <textarea name="text" rows="6" placeholder="Опишите ваш вопрос"></textarea>
+          </label>
+          <button type="submit">Отправить</button>
+        </form>
+        <div id="supportResult" class="muted">После отправки появится номер обращения.</div>
+        <hr>
+        <div class="form-row">
+          <h3 class="subhead">Мои обращения</h3>
+          <button type="button" id="reloadMyTickets" class="chip">Обновить</button>
+        </div>
+        <div id="myTickets" class="ticket-list muted">Загрузка…</div>
+      </article>
+    </section>
+
+    <section id="tab-paywall" class="panel" aria-label="Доступ">
+      <article class="card card--accent">
+        <h2>Доступ к разделу ограничен</h2>
+        <p id="paywallMessage" class="muted">Оформите PREMIUM, чтобы получить скидку в магазине, доступ к PREMIUM-статьям и плашку в комментариях.</p>
+        <div class="paywall-grid">
+          <article class="plan-card">
+            <h3 id="premiumPlanTitle">PREMIUM • 790 ₽ / 30 дней</h3>
+            <p id="premiumPlanDescription">PREMIUM-подписка Колбабот на 30 дней</p>
+            <ul id="premiumPlanFeatures" class="plan-card__features">
+              <li>Скидка 5% на товары в заказе без учёта доставки</li>
+              <li>Доступ ко всем PREMIUM-статьям</li>
+              <li>Плашка PREMIUM рядом с ником в комментариях к статьям</li>
+            </ul>
+            <a id="premiumLink" class="button-link" href="#">Оформить PREMIUM</a>
+          </article>
+        </div>
+        <div class="paywall-group-link">
+          <a id="groupLink" class="inline-store-btn" href="#" target="_blank" rel="noopener">Условия подписки</a>
+        </div>
+        <div class="payment-consent" aria-labelledby="adminPaywallConsentHeading">
+          <p id="adminPaywallConsentHeading" class="payment-consent__lead">
+            Оформление оплаты — это <strong>подписка</strong> с автопродлением раз в <strong>30 дней</strong>. Отметьте все пункты и перейдите к оплате.
+          </p>
+          <label class="payment-consent__row">
+            <input type="checkbox" id="pwAcceptPublicOffer" autocomplete="off">
+            <span>Я принимаю <a href="/public-offer" target="_blank" rel="noopener">публичную оферту</a>, включая условия регулярных списаний.</span>
+          </label>
+          <label class="payment-consent__row">
+            <input type="checkbox" id="pwAcceptSubscriptionAgreement" autocomplete="off">
+            <span>Я принимаю <a href="/subscription-agreement" target="_blank" rel="noopener">соглашение о подписке</a>.</span>
+          </label>
+          <label class="payment-consent__row">
+            <input type="checkbox" id="pwAcceptPaymentCredentials" autocomplete="off">
+            <span>Я принимаю <a href="/payment-credentials" target="_blank" rel="noopener">условия сохранения платёжных данных</a> для рекуррентных платежей.</span>
+          </label>
+          <label class="payment-consent__row">
+            <input type="checkbox" id="pwAcceptPrivacyPolicy" autocomplete="off">
+            <span>Я принимаю <a href="/privacy-policy" target="_blank" rel="noopener">согласие на обработку персональных данных</a>.</span>
+          </label>
+        </div>
+        <div class="payment-promo">
+          <label class="payment-promo__label" for="paymentPromoCode">Промокод</label>
+          <div class="payment-promo__row">
+            <input id="paymentPromoCode" class="payment-promo__input" type="text" placeholder="Например: SPRING25" autocomplete="off">
+            <button type="button" id="applyPaymentPromoCodeBtn" class="payment-promo__apply">Применить</button>
+          </div>
+          <p class="payment-promo__hint muted">Скидка по промокоду — только на первый платёж; далее автопродление по цене тарифа.</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-admin" class="panel hidden" aria-label="Админ">
+      <article class="card">
+        <h2>Админ-редактор</h2>
+        <p class="muted">Главные показатели и все рабочие разделы в одном месте.</p>
+        <div class="admin-tabs" id="adminTabs">
+          <button class="chip is-active" data-admin-panel="dashboard">Дашборд</button>
+          <button class="chip" data-admin-panel="catalog">Каталог</button>
+          <button class="chip" data-admin-panel="handbook">Справочник</button>
+          <button class="chip" data-admin-panel="articles">Статьи</button>
+          <button class="chip" data-admin-panel="recipes">Рецепты</button>
+          <button class="chip" data-admin-panel="faq">FAQ</button>
+          <button class="chip" data-admin-panel="equipment">Оборудование</button>
+          <button class="chip" data-admin-panel="store">Магазин</button>
+          <button class="chip" data-admin-panel="carts">Корзины</button>
+          <button class="chip" data-admin-panel="orders">Заказы</button>
+          <button class="chip" data-admin-panel="reviews">Отзывы</button>
+          <button class="chip" data-admin-panel="support">Поддержка</button>
+          <button class="chip" data-admin-panel="notifications">Оповещения</button>
+          <button class="chip" data-admin-panel="users">Пользователи</button>
+          <button class="chip" data-admin-panel="db">БД</button>
+          <button class="chip" data-admin-panel="security">Безопасность</button>
+          <button class="chip" data-admin-panel="tools">Инструменты</button>
+        </div>
+      </article>
+
+      <article id="admin-panel-dashboard" class="card admin-panel is-active admin-dashboard" aria-label="Дашборд">
+        <header class="admin-dashboard__header">
+          <div>
+            <p class="admin-dashboard__eyebrow">Обзор бизнеса</p>
+            <h3>Добрый день, <span id="adminDashboardAdminName">администратор</span></h3>
+            <p class="muted">Здесь всё, что требует решения прямо сейчас.</p>
+          </div>
+          <div class="admin-dashboard__refresh">
+            <span id="adminDashboardUpdatedAt" class="muted" aria-live="polite">Загружаем актуальные данные…</span>
+            <button type="button" id="adminDashboardRefreshBtn" class="chip">Обновить</button>
+          </div>
+        </header>
+
+        <section class="admin-dashboard__kpis" aria-label="Ключевые показатели">
+          <article class="admin-kpi admin-kpi--revenue">
+            <span class="admin-kpi__label">Выручка за месяц</span>
+            <strong id="adminDashboardRevenue">—</strong>
+            <span id="adminDashboardRevenueTrend" class="admin-kpi__note">Магазин и подписки</span>
+          </article>
+          <article class="admin-kpi admin-kpi--orders">
+            <span class="admin-kpi__label">Заказы в работе</span>
+            <strong id="adminDashboardOrders">—</strong>
+            <span id="adminDashboardOrdersNote" class="admin-kpi__note">Ожидают сборки</span>
+          </article>
+          <article class="admin-kpi admin-kpi--subscriptions">
+            <span class="admin-kpi__label">Активные подписки</span>
+            <strong id="adminDashboardSubscriptions">—</strong>
+            <span class="admin-kpi__note">Действующий доступ</span>
+          </article>
+          <article class="admin-kpi admin-kpi--online">
+            <span class="admin-kpi__label">Сейчас онлайн</span>
+            <strong id="adminDashboardOnline">—</strong>
+            <span id="adminDashboardOnlineNote" class="admin-kpi__note">Уникальные аккаунты</span>
+          </article>
+          <article class="admin-kpi admin-kpi--users">
+            <span class="admin-kpi__label">Пользователи</span>
+            <strong id="adminDashboardUsers">—</strong>
+            <span id="adminDashboardUsersNote" class="admin-kpi__note">Новые регистрации</span>
+          </article>
+          <article class="admin-kpi admin-kpi--support">
+            <span class="admin-kpi__label">Поддержка</span>
+            <strong id="adminDashboardTickets">—</strong>
+            <span id="adminDashboardTicketsNote" class="admin-kpi__note">Открытые обращения</span>
+          </article>
+        </section>
+
+        <div id="adminDashboardError" class="admin-dashboard__error hidden" role="alert"></div>
+
+        <div class="admin-dashboard__primary-grid">
+          <section class="admin-dashboard-card admin-dashboard-card--chart" aria-labelledby="adminDashboardChartTitle">
+            <header class="admin-dashboard-card__header">
+              <div>
+                <p class="admin-dashboard-card__kicker">Продажи</p>
+                <h4 id="adminDashboardChartTitle">Динамика за 14 дней</h4>
+              </div>
+              <div class="admin-dashboard-legend" aria-label="Легенда">
+                <span><i></i> Выручка</span>
+                <strong id="adminDashboardChartTotal">—</strong>
+              </div>
+            </header>
+            <div id="adminDashboardChart" class="admin-dashboard-chart" role="img" aria-label="График выручки по дням">
+              <div class="admin-dashboard-empty">Данные загружаются…</div>
+            </div>
+            <footer class="admin-dashboard-chart__footer">
+              <span id="adminDashboardStoreRevenue">Магазин: —</span>
+              <span id="adminDashboardSubscriptionRevenue">Подписки: —</span>
+            </footer>
+          </section>
+
+          <section class="admin-dashboard-card admin-dashboard-card--attention" aria-labelledby="adminDashboardAttentionTitle">
+            <header class="admin-dashboard-card__header">
+              <div>
+                <p class="admin-dashboard-card__kicker">Фокус</p>
+                <h4 id="adminDashboardAttentionTitle">Требует внимания</h4>
+              </div>
+              <span id="adminDashboardAttentionTotal" class="admin-dashboard-count">—</span>
+            </header>
+            <div id="adminDashboardAttention" class="admin-dashboard-attention-list">
+              <div class="admin-dashboard-empty">Проверяем задачи…</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="admin-dashboard-card admin-dashboard-card--actions" aria-labelledby="adminDashboardActionsTitle">
+          <header class="admin-dashboard-card__header">
+            <div>
+              <p class="admin-dashboard-card__kicker">Навигация</p>
+              <h4 id="adminDashboardActionsTitle">Быстрые действия</h4>
+            </div>
+          </header>
+          <div class="admin-dashboard-actions">
+            <button type="button" data-dashboard-target="orders"><span aria-hidden="true">ЗК</span><b>Заказы</b><small>Сборка и выдача</small></button>
+            <button type="button" data-dashboard-target="support"><span aria-hidden="true">ПД</span><b>Поддержка</b><small>Ответить клиентам</small></button>
+            <button type="button" data-dashboard-target="store"><span aria-hidden="true">МГ</span><b>Магазин</b><small>Товары и остатки</small></button>
+            <button type="button" data-dashboard-target="users"><span aria-hidden="true">ПЛ</span><b>Пользователи</b><small>Доступ и роли</small></button>
+            <button type="button" data-dashboard-target="articles"><span aria-hidden="true">СТ</span><b>Статьи</b><small>Контент и черновики</small></button>
+          </div>
+        </section>
+
+        <div class="admin-dashboard__secondary-grid">
+          <section class="admin-dashboard-card" aria-labelledby="adminDashboardRecentOrdersTitle">
+            <header class="admin-dashboard-card__header">
+              <div>
+                <p class="admin-dashboard-card__kicker">Магазин</p>
+                <h4 id="adminDashboardRecentOrdersTitle">Последние заказы</h4>
+              </div>
+              <button type="button" class="admin-dashboard-link" data-dashboard-target="orders">Все заказы</button>
+            </header>
+            <div id="adminDashboardRecentOrders" class="admin-dashboard-feed">
+              <div class="admin-dashboard-empty">Загружаем заказы…</div>
+            </div>
+          </section>
+
+          <section class="admin-dashboard-card" aria-labelledby="adminDashboardRecentUsersTitle">
+            <header class="admin-dashboard-card__header">
+              <div>
+                <p class="admin-dashboard-card__kicker">Аудитория</p>
+                <h4 id="adminDashboardRecentUsersTitle">Новые пользователи</h4>
+              </div>
+              <button type="button" class="admin-dashboard-link" data-dashboard-target="users">Все пользователи</button>
+            </header>
+            <div id="adminDashboardRecentUsers" class="admin-dashboard-feed">
+              <div class="admin-dashboard-empty">Загружаем пользователей…</div>
+            </div>
+          </section>
+
+          <section class="admin-dashboard-card" aria-labelledby="adminDashboardContentTitle">
+            <header class="admin-dashboard-card__header">
+              <div>
+                <p class="admin-dashboard-card__kicker">Наполнение</p>
+                <h4 id="adminDashboardContentTitle">Контент и каталог</h4>
+              </div>
+            </header>
+            <div id="adminDashboardContent" class="admin-dashboard-content-list">
+              <div class="admin-dashboard-empty">Считаем материалы…</div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <article id="admin-panel-catalog" class="card admin-panel">
+        <h3>Категории и сорта</h3>
+        <div class="grid-two">
+          <div>
+            <label class="field">
+              <span>Категория</span>
+              <select id="adminCategorySelect"></select>
+            </label>
+            <label class="field">
+              <span>Название категории</span>
+              <input id="adminCategoryTitle" type="text" placeholder="Название категории">
+            </label>
+            <div class="inline-actions">
+              <button type="button" id="adminCategoryNewBtn">Новая</button>
+              <button type="button" id="adminCategorySaveBtn">Сохранить</button>
+              <button type="button" id="adminCategoryDeleteBtn" class="danger">Удалить</button>
+            </div>
+          </div>
+          <div>
+            <label class="field">
+              <span>Категория для сорта</span>
+              <select id="adminSausageCategorySelect"></select>
+            </label>
+            <label class="field">
+              <span>Сорт</span>
+              <select id="adminSausageSelect"></select>
+            </label>
+            <label class="field">
+              <span>Название сорта</span>
+              <input id="adminSausageName" type="text" placeholder="Название сорта">
+            </label>
+            <div class="inline-actions">
+              <button type="button" id="adminSausageNewBtn">Новый</button>
+              <button type="button" id="adminSausageSaveBtn">Сохранить</button>
+              <button type="button" id="adminSausageDeleteBtn" class="danger">Удалить</button>
+            </div>
+          </div>
+        </div>
+        <div id="adminCatalogResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-handbook" class="card admin-panel">
+        <h3>Редактор справочника</h3>
+        <div class="grid-two">
+          <label class="field">
+            <span>Раздел</span>
+            <select id="adminHandbookSectionSelect"></select>
+          </label>
+          <label class="field">
+            <span>Статья</span>
+            <select id="adminHandbookArticleSelect"></select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Ключ статьи (slug)</span>
+          <input id="adminHandbookArticleKey" type="text" placeholder="primer-stati">
+        </label>
+        <label class="field">
+          <span>Заголовок</span>
+          <input id="adminHandbookArticleTitle" type="text" placeholder="Заголовок статьи">
+        </label>
+        <label class="field">
+          <span>Текст</span>
+          <textarea id="adminHandbookArticleText" rows="10" placeholder="Текст статьи"></textarea>
+        </label>
+        <label class="field">
+          <span>Ссылка (опционально)</span>
+          <input id="adminHandbookArticleLink" type="text" placeholder="https://...">
+        </label>
+        <div class="inline-actions">
+          <button type="button" id="adminHandbookNewBtn">Новая</button>
+          <button type="button" id="adminHandbookSaveBtn">Сохранить</button>
+          <button type="button" id="adminHandbookDeleteBtn" class="danger">Удалить</button>
+        </div>
+        <div id="adminHandbookResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-articles" class="card admin-panel article-editor-card">
+        <div class="article-editor-heading">
+          <div>
+            <h3>Редактор статей</h3>
+            <p class="muted">Черновики видны только здесь. После публикации статья появится у пользователей.</p>
+          </div>
+          <div class="inline-actions">
+            <button type="button" id="adminArticleNewBtn" class="chip">Новая статья</button>
+            <button type="button" id="adminArticleSaveBtn">Сохранить</button>
+            <button type="button" id="adminArticleDeleteBtn" class="danger">Удалить</button>
+          </div>
+        </div>
+        <label class="field">
+          <span>Статья</span>
+          <select id="adminArticleSelect"></select>
+        </label>
+        <div class="grid-two">
+          <label class="field">
+            <span>Заголовок</span>
+            <input id="adminArticleTitle" type="text" maxlength="240" placeholder="Заголовок статьи">
+          </label>
+          <label class="field">
+            <span>Адрес (slug, можно оставить пустым)</span>
+            <input id="adminArticleSlug" type="text" maxlength="100" placeholder="sozdaetsya-iz-zagolovka">
+          </label>
+        </div>
+        <label class="field">
+          <span>Краткое описание</span>
+          <textarea id="adminArticleExcerpt" rows="3" maxlength="600" placeholder="Показывается в карточке статьи. Если оставить пустым, сформируется автоматически."></textarea>
+        </label>
+        <div class="article-cover-editor">
+          <label class="field">
+            <span>Обложка</span>
+            <input id="adminArticleCoverFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          </label>
+          <button type="button" id="adminArticleCoverUploadBtn" class="chip">Настроить и загрузить</button>
+          <button type="button" id="adminArticleCoverEditorBtn" class="chip">Открыть в фоторедакторе</button>
+          <button type="button" id="adminArticleCoverClearBtn" class="chip">Убрать обложку</button>
+          <input id="adminArticleCoverPath" type="hidden">
+          <img id="adminArticleCoverPreview" class="article-cover-preview hidden" alt="Предпросмотр обложки" title="Нажмите для редактирования">
+        </div>
+        <div class="article-card-image-editor">
+          <label class="field">
+            <span>Аватарка карточки статьи</span>
+            <input id="adminArticleCardImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          </label>
+          <button type="button" id="adminArticleCardImageUploadBtn" class="chip">Настроить и загрузить</button>
+          <button type="button" id="adminArticleCardImageEditorBtn" class="chip">Открыть в фоторедакторе</button>
+          <button type="button" id="adminArticleCardImageClearBtn" class="chip">Использовать обложку</button>
+          <input id="adminArticleCardImagePath" type="hidden">
+          <img id="adminArticleCardImagePreview" class="article-card-image-preview hidden" alt="Предпросмотр аватарки карточки" title="Нажмите для редактирования">
+          <span class="muted article-image-fallback-hint">Если аватарка не задана, в карточке используется обложка.</span>
+        </div>
+        <div class="field">
+          <span>Текст статьи</span>
+          <div id="adminArticleToolbar" class="rich-editor-toolbar" role="toolbar" aria-label="Форматирование текста">
+            <select id="adminArticleBlockFormat" aria-label="Стиль абзаца">
+              <option value="p">Обычный текст</option>
+              <option value="h2">Заголовок 2</option>
+              <option value="h3">Заголовок 3</option>
+              <option value="blockquote">Цитата</option>
+            </select>
+            <button type="button" data-article-command="bold" title="Полужирный"><strong>Ж</strong></button>
+            <button type="button" data-article-command="italic" title="Курсив"><em>К</em></button>
+            <button type="button" data-article-command="underline" title="Подчёркнутый"><u>Ч</u></button>
+            <button type="button" data-article-command="strikeThrough" title="Зачёркнутый"><s>abc</s></button>
+            <button type="button" data-article-command="insertUnorderedList" title="Маркированный список">• Список</button>
+            <button type="button" data-article-command="insertOrderedList" title="Нумерованный список">1. Список</button>
+            <button type="button" data-article-command="justifyLeft" title="По левому краю">⇤</button>
+            <button type="button" data-article-command="justifyCenter" title="По центру">↔</button>
+            <button type="button" data-article-command="justifyRight" title="По правому краю">⇥</button>
+            <button type="button" id="adminArticleLinkBtn" title="Вставить ссылку">Ссылка</button>
+            <button type="button" id="adminArticleEmojiBtn" title="Вставить эмодзи" aria-expanded="false" aria-controls="adminArticleEmojiPanel">😀 Эмодзи</button>
+            <button type="button" id="adminArticlePhotoEditorBtn" title="Открыть фоторедактор">🖼️ Фоторедактор</button>
+            <button type="button" data-article-command="removeFormat" title="Очистить форматирование">Очистить</button>
+            <button type="button" data-article-command="undo" title="Отменить">↶</button>
+            <button type="button" data-article-command="redo" title="Повторить">↷</button>
+            <div id="adminArticleEmojiPanel" class="article-emoji-panel" role="group" aria-label="Эмодзи для статьи" hidden>
+              <div class="article-emoji-grid">
+                <button type="button" data-article-emoji="😀" title="Улыбка" aria-label="Улыбка">😀</button>
+                <button type="button" data-article-emoji="😃" title="Радость" aria-label="Радость">😃</button>
+                <button type="button" data-article-emoji="😊" title="Добрая улыбка" aria-label="Добрая улыбка">😊</button>
+                <button type="button" data-article-emoji="😉" title="Подмигивание" aria-label="Подмигивание">😉</button>
+                <button type="button" data-article-emoji="😍" title="В восторге" aria-label="В восторге">😍</button>
+                <button type="button" data-article-emoji="🤩" title="Восхищение" aria-label="Восхищение">🤩</button>
+                <button type="button" data-article-emoji="🥳" title="Праздник" aria-label="Праздник">🥳</button>
+                <button type="button" data-article-emoji="😎" title="Отлично" aria-label="Отлично">😎</button>
+                <button type="button" data-article-emoji="🤔" title="Размышление" aria-label="Размышление">🤔</button>
+                <button type="button" data-article-emoji="😂" title="Смех" aria-label="Смех">😂</button>
+                <button type="button" data-article-emoji="😢" title="Грусть" aria-label="Грусть">😢</button>
+                <button type="button" data-article-emoji="👍" title="Нравится" aria-label="Нравится">👍</button>
+                <button type="button" data-article-emoji="👎" title="Не нравится" aria-label="Не нравится">👎</button>
+                <button type="button" data-article-emoji="👏" title="Аплодисменты" aria-label="Аплодисменты">👏</button>
+                <button type="button" data-article-emoji="🙌" title="Ура" aria-label="Ура">🙌</button>
+                <button type="button" data-article-emoji="🤝" title="Соглашение" aria-label="Соглашение">🤝</button>
+                <button type="button" data-article-emoji="💪" title="Сила" aria-label="Сила">💪</button>
+                <button type="button" data-article-emoji="🙏" title="Спасибо" aria-label="Спасибо">🙏</button>
+                <button type="button" data-article-emoji="❤️" title="Сердце" aria-label="Сердце">❤️</button>
+                <button type="button" data-article-emoji="🔥" title="Огонь" aria-label="Огонь">🔥</button>
+                <button type="button" data-article-emoji="✨" title="Новинка" aria-label="Новинка">✨</button>
+                <button type="button" data-article-emoji="✅" title="Готово" aria-label="Готово">✅</button>
+                <button type="button" data-article-emoji="❌" title="Ошибка" aria-label="Ошибка">❌</button>
+                <button type="button" data-article-emoji="⚠️" title="Внимание" aria-label="Внимание">⚠️</button>
+                <button type="button" data-article-emoji="📌" title="Важно" aria-label="Важно">📌</button>
+                <button type="button" data-article-emoji="📣" title="Объявление" aria-label="Объявление">📣</button>
+                <button type="button" data-article-emoji="💡" title="Идея" aria-label="Идея">💡</button>
+                <button type="button" data-article-emoji="🧾" title="Документ" aria-label="Документ">🧾</button>
+                <button type="button" data-article-emoji="🌍" title="Мир" aria-label="Мир">🌍</button>
+                <button type="button" data-article-emoji="🇷🇺" title="Россия" aria-label="Флаг России">🇷🇺</button>
+                <button type="button" data-article-emoji="🇺🇸" title="США" aria-label="Флаг США">🇺🇸</button>
+                <button type="button" data-article-emoji="🇪🇺" title="Европа" aria-label="Флаг Евросоюза">🇪🇺</button>
+              </div>
+              <span class="article-emoji-hint">Эмодзи вставится в текущую позицию курсора.</span>
+            </div>
+          </div>
+          <div id="adminArticleEditor" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Начните писать статью…"></div>
+        </div>
+        <div class="article-inline-image-editor">
+          <label class="field">
+            <span>Фотография в текст</span>
+            <input id="adminArticleInlineImageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          </label>
+          <button type="button" id="adminArticleInlineImageUploadBtn" class="chip">Загрузить и вставить</button>
+          <button type="button" id="adminArticleInlineImageEditorBtn" class="chip">Открыть в фоторедакторе</button>
+          <span class="muted">Фотография вставится в текущую позицию курсора.</span>
+        </div>
+        <label class="field checkbox-field article-publish-toggle">
+          <span>Только для подписчиков PREMIUM</span>
+          <input id="adminArticlePremium" type="checkbox">
+        </label>
+        <label class="field checkbox-field article-publish-toggle">
+          <span>Опубликовать для пользователей</span>
+          <input id="adminArticlePublished" type="checkbox">
+        </label>
+        <div id="adminArticleResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-recipes" class="card admin-panel">
+        <h3>Редактор рецепта</h3>
+        <p class="muted admin-recipe-lead">Создайте новый рецепт или выберите существующий. Название и ингредиенты сохраняются здесь же.</p>
+        <div class="grid-two admin-recipe-identity">
+          <label class="field">
+            <span>Категория</span>
+            <select id="adminRecipeCategorySelect"></select>
+          </label>
+          <label class="field">
+            <span>Рецепт</span>
+            <select id="adminRecipeSausageSelect"></select>
+          </label>
+        </div>
+        <div class="grid-two admin-recipe-identity">
+          <label class="field">
+            <span>Название рецепта</span>
+            <input id="adminRecipeName" type="text" placeholder="Например: Сервелат домашний" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Slug</span>
+            <input id="adminRecipeSlug" type="text" placeholder="servelat-domashniy" autocomplete="off">
+          </label>
+        </div>
+        <label class="field">
+          <span>Текст рецепта</span>
+          <textarea id="adminRecipeText" rows="8" placeholder="Опишите технологию приготовления по шагам"></textarea>
+        </label>
+        <div class="grid-two admin-recipe-photo-row">
+          <label class="field">
+            <span>Фото рецепта</span>
+            <input id="adminRecipePhotoFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          </label>
+          <div class="field">
+            <span>&nbsp;</span>
+            <button type="button" id="adminRecipeUploadBtn" class="chip">Загрузить фото</button>
+            <div id="adminRecipePhotoUploadHint" class="muted">После загрузки файл попадет в постоянное хранилище /data, старое фото удаляется автоматически.</div>
+          </div>
+        </div>
+        <details class="admin-recipe-advanced">
+          <summary>Дополнительные настройки фото</summary>
+          <div class="grid-two">
+            <label class="field">
+              <span>Путь в /data</span>
+              <input id="adminRecipePhotoPath" type="text" placeholder="recipes/photo.jpg">
+            </label>
+            <label class="field">
+              <span>Media ID VK</span>
+              <input id="adminRecipePhotoId" type="text" placeholder="photo-123_456">
+            </label>
+          </div>
+        </details>
+        <img id="adminRecipePhotoPreview" alt="Фото рецепта" class="photo-preview hidden">
+        <div class="admin-recipe-ingredients-head">
+          <div>
+            <h4>Ингредиенты</h4>
+            <p class="muted">Количество указывается на 1 кг. У строки можно добавить дочерние варианты выбора.</p>
+          </div>
+          <button type="button" id="adminAddIngredientRow" class="chip">+ Добавить ингредиент</button>
+        </div>
+        <div id="adminIngredientsList" class="ingredients-editor"></div>
+        <div class="inline-actions">
+          <button type="button" id="adminSaveRecipeBtn">Сохранить рецепт</button>
+          <button type="button" id="adminClearRecipeTextBtn" class="danger">Очистить текст</button>
+          <button type="button" id="adminClearRecipePhotoBtn" class="danger">Очистить фото</button>
+        </div>
+        <div id="adminRecipeResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-faq" class="card admin-panel">
+        <h3>FAQ</h3>
+        <label class="field">
+          <span>Запись FAQ</span>
+          <select id="adminFaqSelect"></select>
+        </label>
+        <label class="field">
+          <span>Вопрос</span>
+          <input id="adminFaqQuestion" type="text" placeholder="Вопрос">
+        </label>
+        <label class="field">
+          <span>Ответ</span>
+          <textarea id="adminFaqAnswer" rows="5"></textarea>
+        </label>
+        <div class="inline-actions">
+          <button type="button" id="adminFaqNewBtn">Новая</button>
+          <button type="button" id="adminFaqSaveBtn">Сохранить</button>
+          <button type="button" id="adminFaqDeleteBtn" class="danger">Удалить</button>
+        </div>
+        <div id="adminFaqResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-equipment" class="card admin-panel">
+        <h3>Оборудование</h3>
+        <label class="field">
+          <span>Позиция</span>
+          <select id="adminEquipmentSelect"></select>
+        </label>
+        <div class="grid-two">
+          <label class="field">
+            <span>Категория</span>
+            <input id="adminEquipmentCategoryName" type="text">
+          </label>
+          <label class="field">
+            <span>Название</span>
+            <input id="adminEquipmentTitle" type="text">
+          </label>
+        </div>
+        <label class="field">
+          <span>Описание</span>
+          <textarea id="adminEquipmentDescription" rows="5"></textarea>
+        </label>
+        <div class="grid-two">
+          <label class="field">
+            <span>Ссылка покупки</span>
+            <input id="adminEquipmentBuyLink" type="text">
+          </label>
+          <label class="field">
+            <span>Текст кнопки</span>
+            <input id="adminEquipmentBuyLabel" type="text" value="Купить">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Photo path (/data, авто)</span>
+            <input id="adminEquipmentPhotoPath" type="text" placeholder="equipment/photo.jpg">
+          </label>
+          <label class="field">
+            <span>Media ID (опц.)</span>
+            <input id="adminEquipmentPhotoId" type="text">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Загрузить фото с компьютера</span>
+            <input id="adminEquipmentPhotoFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+          </label>
+          <div class="field">
+            <span>Действие</span>
+            <button type="button" id="adminEquipmentUploadBtn" class="chip">Загрузить фото</button>
+            <div id="adminEquipmentPhotoUploadHint" class="muted">После загрузки файл попадет в постоянное хранилище /data, старое фото удаляется автоматически.</div>
+          </div>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Сортировка</span>
+            <input id="adminEquipmentSortOrder" type="number" value="100">
+          </label>
+          <label class="field checkbox-field">
+            <span>Активно</span>
+            <input id="adminEquipmentActive" type="checkbox" checked>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button type="button" id="adminEquipmentNewBtn">Новая</button>
+          <button type="button" id="adminEquipmentSaveBtn">Сохранить</button>
+          <button type="button" id="adminEquipmentDeleteBtn" class="danger">Удалить</button>
+        </div>
+        <div id="adminEquipmentResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-store" class="card admin-panel admin-store-workspace">
+        <h3>Магазин</h3>
+        <div class="admin-store-layout">
+          <section class="admin-store-pane" aria-label="Витрина товаров">
+            <div class="admin-store-pane__head">
+              <div class="admin-store-pane__title-row">
+                <h4>Товары</h4>
+                <p class="muted admin-store-pane__hint">Перетащите карточки для сортировки.</p>
+              </div>
+              <div class="inline-actions admin-store-toolbar">
+                <button type="button" id="adminStoreNewBtn">Новый товар</button>
+                <button type="button" id="adminStoreSaveBtn">Сохранить</button>
+                <button type="button" id="adminStoreDeleteBtn" class="danger">Удалить</button>
+              </div>
+              <details class="admin-store-disclosure">
+                <summary>Импорт и VK-синхронизация</summary>
+                <div class="admin-store-disclosure__body">
+                  <label class="field">
+                    <span>VK Market token</span>
+                    <input type="password" id="adminStoreVkToken" placeholder="vk1.a.xxxxx" autocomplete="off">
+                  </label>
+                  <p class="muted">С токеном — импорт и описания из VK. Без токена — только YML/XML. Нужен user token без привязки к IP.</p>
+                  <div class="inline-actions">
+                    <label class="chip">Файл <input id="adminStoreImportFile" type="file" accept=".xml,.yml,.yaml" hidden></label>
+                    <button type="button" id="adminStoreImportBtn" class="chip">Импорт</button>
+                    <button type="button" id="adminStoreRefreshDescriptionsBtn" class="chip">Описания из VK</button>
+                  </div>
+                </div>
+              </details>
+            </div>
+            <div id="adminStoreGrid" class="equipment-grid admin-store-grid"></div>
+          </section>
+          <section class="admin-store-pane admin-store-pane--editor" aria-label="Редактор">
+            <div class="admin-store-editor-tabs" role="tablist" aria-label="Разделы редактора">
+              <button type="button" class="chip is-active" data-store-editor="product" role="tab" aria-selected="true">Товар</button>
+              <button type="button" class="chip" data-store-editor="settings" role="tab" aria-selected="false">Доставка и категории</button>
+              <button type="button" class="chip" data-store-editor="promos" role="tab" aria-selected="false">Акции и настройки</button>
+            </div>
+            <div id="adminStoreEditorProduct" class="admin-store-editor-panel is-active" role="tabpanel">
+              <input id="adminStoreProductId" type="hidden">
+              <label class="field"><span>Тип товара</span><select id="adminStoreProductType"><option value="physical">Физический товар</option><option value="digital_book">Электронная книга</option></select></label>
+              <label class="field"><span>Категория</span><select id="adminStoreCategoryName"></select></label>
+              <label class="field"><span>Название</span><input id="adminStoreTitle" type="text"></label>
+              <section class="admin-store-variants" data-store-physical-field aria-labelledby="adminStoreVariantsTitle">
+                <h4 id="adminStoreVariantsTitle">Варианты одной карточки</h4>
+                <label class="field"><span>Общее название карточки</span><input id="adminStoreVariantGroup" type="text" list="adminStoreVariantGroups" maxlength="160" placeholder="Например, Коллагеновая оболочка 45 мм" aria-describedby="adminStoreVariantHint"></label>
+                <datalist id="adminStoreVariantGroups"></datalist>
+                <label class="field"><span>Название этого варианта</span><input id="adminStoreVariantLabel" type="text" maxlength="160" placeholder="Например, 10 м / 100 г / красный"></label>
+                <p id="adminStoreVariantHint" class="field-hint muted">Чтобы объединить товары, выберите для них одинаковое общее название и сохраните каждый. Цена, вес, метраж, фото и остаток остаются своими у каждого варианта. Очистите общее название, чтобы отделить товар.</p>
+                <div id="adminStoreVariantMembers" class="admin-store-variant-members" aria-label="Товары в карточке"></div>
+              </section>
+              <label class="field"><span>Описание</span><textarea id="adminStoreDescription" rows="3"></textarea></label>
+              <div class="grid-two admin-store-field-grid">
+                <label class="field"><span>Цена, ₽</span><input id="adminStorePrice" type="number" min="0" step="0.01" autocomplete="off" inputmode="decimal"></label>
+                <label class="field"><span>Старая цена, ₽</span><input id="adminStoreOldPrice" type="number" min="0" step="0.01" autocomplete="off" inputmode="decimal"></label>
+              </div>
+              <div class="grid-two admin-store-field-grid">
+                <label class="field" data-store-physical-field><span>Вес, г</span><input id="adminStoreWeight" type="number" min="0" step="1" placeholder="0" autocomplete="off" inputmode="numeric"></label>
+                <label class="field" data-store-physical-field><span>Длина, м</span><input id="adminStoreLength" type="number" min="0" step="0.001" placeholder="" autocomplete="off" inputmode="decimal"></label>
+                <label class="field" data-store-physical-field><span>Габариты Д/Ш/В, см</span><input id="adminStoreDimensions" type="text" placeholder="20/15/10" autocomplete="off"></label>
+                <label class="field" data-store-physical-field><span>Остаток</span><input id="adminStoreStock" type="number" min="0" step="1" autocomplete="off" inputmode="numeric"></label>
+              </div>
+              <label class="field"><span>Фото path/URL</span><input id="adminStorePhotoPath" type="text" autocomplete="off"></label>
+              <label class="field"><span>Ссылка источника</span><input id="adminStoreSourceUrl" type="url" autocomplete="off"></label>
+              <label class="field checkbox-field"><span>Активно</span><input id="adminStoreActive" type="checkbox" checked></label>
+              <section id="adminDigitalBookManager" class="admin-book-editor hidden" hidden aria-labelledby="adminBookEditorTitle">
+                <h4 id="adminBookEditorTitle">Электронная книга</h4>
+                <p class="muted">Укажите название книги и сохраните карточку. Загрузите обычную и/или мобильную версию в DOCX или PDF и проверьте тестовый PDF каждой. DOCX преобразуется в PDF, на готовый PDF наносится водяной знак. Для публикации включите «Активно» и сохраните карточку.</p>
+                <label class="field"><span>Название книги</span><input id="adminBookTitle" type="text" aria-describedby="adminBookTitleHint"></label>
+                <p id="adminBookTitleHint" class="field-hint muted">Название для PDF и письма покупателю. Заполняется отдельно от названия карточки товара.</p>
+                <div class="admin-book-variant">
+                  <h5>Обычная версия</h5>
+                  <div id="adminDigitalBookStatus" class="admin-book-status muted" aria-live="polite">Сначала сохраните карточку.</div>
+                  <div class="admin-digital-book-upload">
+                    <label class="field"><span>Исходник книги (DOCX или PDF)</span><input id="adminDigitalBookFile" type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"></label>
+                    <button type="button" id="adminDigitalBookUploadBtn" disabled>Загрузить и проверить</button>
+                  </div>
+                  <div class="inline-actions">
+                    <button type="button" id="adminDigitalBookPreviewBtn" class="chip" disabled>Скачать тестовый PDF</button>
+                  </div>
+                </div>
+                <div class="admin-book-variant">
+                  <h5>Мобильная версия</h5>
+                  <div id="adminMobileBookStatus" class="admin-book-status muted" aria-live="polite">Сначала сохраните карточку.</div>
+                  <div class="admin-digital-book-upload">
+                    <label class="field"><span>Исходник мобильной версии (DOCX или PDF)</span><input id="adminMobileBookFile" type="file" accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"></label>
+                    <button type="button" id="adminMobileBookUploadBtn" disabled>Загрузить и проверить</button>
+                  </div>
+                  <div class="inline-actions">
+                    <button type="button" id="adminMobileBookPreviewBtn" class="chip" disabled>Скачать тестовый PDF</button>
+                  </div>
+                </div>
+                <p class="field-hint muted">Если загружены обе версии, покупатель получит два PDF в одном письме. Имя покупателя и номер экземпляра добавляются в каждый файл автоматически. Тестовый PDF показывает выбранную версию с примером имени и номера.</p>
+                <div class="inline-actions">
+                  <button type="button" id="adminBookSaveBtn">Сохранить карточку</button>
+                </div>
+              </section>
+              <div class="admin-store-related">
+                <h4>С этим товаром покупают</h4>
+                <div class="inline-actions admin-store-related-add">
+                  <label class="field admin-store-related-select">
+                    <span>Товар</span>
+                    <select id="adminStoreRelatedSelect"></select>
+                  </label>
+                  <button type="button" id="adminStoreRelatedAddBtn">Добавить</button>
+                </div>
+                <div id="adminStoreRelatedList" class="admin-store-related-list muted">Пока ничего не привязано.</div>
+              </div>
+            </div>
+            <div id="adminStoreEditorPromos" class="admin-store-editor-panel" role="tabpanel" hidden>
+              <div id="adminStorePromos" class="ingredients-editor"></div>
+              <section class="admin-store-banners" aria-labelledby="adminStoreBannersTitle">
+                <h4 id="adminStoreBannersTitle">Баннеры магазина</h4>
+                <p class="muted">Редактируйте текущие баннеры, добавляйте новые и меняйте порядок стрелками. Сохранённая карусель общая для сайта и Android-приложения. Отключённые баннеры сохраняются в редакторе.</p>
+                <details class="admin-banner-variables"><summary>Автоматические значения акций</summary><p class="muted">В заголовке и тексте можно использовать переменные: {standard_percent}, {premium_percent}, {max_redemption_percent}, {referral_percent}, {referral_max_sausages}, {review_bonus_sausages}, {review_min_chars}. На витрине они заменятся актуальными настройками акций.</p></details>
+                <div id="adminStoreBannersList"></div>
+                <div class="admin-banner-card__actions">
+                  <button type="button" id="adminStoreBannerAdd" disabled>Добавить баннер</button>
+                  <button type="button" id="adminStoreBannersSave" disabled>Сохранить баннеры</button>
+                  <button type="button" id="adminStoreBannersReload" class="chip">Загрузить заново</button>
+                </div>
+                <p id="adminStoreBannersStatus" class="muted" role="status">Загрузка баннеров…</p>
+              </section>
+            </div>
+            <div id="adminStoreEditorSettings" class="admin-store-editor-panel" role="tabpanel" hidden>
+              <h4>Доставка</h4>
+              <p class="muted">Способы доставки у клиента. Цена — по размеру посылки.</p>
+              <div id="adminDeliveryList" class="ingredients-editor"></div>
+              <h4>Тарифы посылок</h4>
+              <p class="muted">XS ≤1 кг, S ≤2 кг, M ≤5 кг, L ≤8 кг, XL ≤15 кг. Свыше 15 кг: XL + тариф за остаток по той же сетке.</p>
+              <div id="adminDeliverySizesList" class="ingredients-editor"></div>
+              <h4>Категории магазина</h4>
+              <div class="admin-store-category-create">
+                <strong>Создать категорию</strong>
+                <div class="inline-actions admin-store-category-add">
+                  <label class="field admin-store-category-title"><span>Название</span><input id="adminStoreCategoryNewTitle" type="text" placeholder="Например: Специи"></label>
+                  <label class="field admin-store-category-sort"><span>Порядок</span><input id="adminStoreCategoryNewSort" type="number" step="1" placeholder="авто"></label>
+                  <button type="button" id="adminStoreCategoryAddBtn">Создать</button>
+                </div>
+              </div>
+              <label class="field">
+                <span>Изменить / удалить</span>
+                <select id="adminStoreCategorySelect">
+                  <option value="">Выберите категорию…</option>
+                </select>
+              </label>
+              <div id="adminStoreCategoryEditor" class="admin-store-category-editor hidden">
+                <div class="grid-two admin-store-field-grid">
+                  <label class="field"><span>Название</span><input id="adminStoreCategoryEditTitle" type="text"></label>
+                  <label class="field"><span>Порядок</span><input id="adminStoreCategoryEditSort" type="number" step="1"></label>
+                </div>
+                <p id="adminStoreCategoryMeta" class="muted"></p>
+                <label id="adminStoreCategoryReassignWrap" class="field hidden">
+                  <span>При удалении перенести товары в</span>
+                  <select id="adminStoreCategoryReassignSelect"></select>
+                </label>
+                <div class="inline-actions">
+                  <button type="button" id="adminStoreCategorySaveBtn">Сохранить</button>
+                  <button type="button" id="adminStoreCategoryDeleteBtn" class="danger">Удалить</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div id="adminStoreResult" class="muted admin-store-result"></div>
+      </article>
+
+      <article id="admin-panel-carts" class="card admin-panel">
+        <h3>Собранные корзины</h3>
+        <p class="muted">Актуальные непустые корзины пользователей: состав, количество товаров и потенциальная сумма заказа.</p>
+        <button type="button" id="adminCartsRefreshBtn" class="chip">Обновить</button>
+        <div id="adminCartsSummary" class="admin-digital-summary"></div>
+        <div id="adminCartsList" class="admin-orders-list muted">Загрузка…</div>
+      </article>
+
+      <article id="admin-panel-orders" class="card admin-panel">
+        <h3>Заказы</h3>
+        <p class="muted">Заказы сгруппированы строго по клиентам: внутри каждого клиента видно состав, суммы, доставку, адрес и статусы.</p>
+        <div class="inline-actions admin-order-tabs">
+          <button type="button" id="adminOrdersCurrentBtn" class="chip is-active" data-orders-status="current">Текущие</button>
+          <button type="button" id="adminOrdersCompletedBtn" class="chip" data-orders-status="completed">Завершённые</button>
+          <button type="button" id="adminOrdersFailedBtn" class="chip" data-orders-status="failed">Отменённые и неоплаченные</button>
+          <button type="button" id="adminOrdersDigitalBtn" class="chip" data-orders-status="digital">Цифровые товары</button>
+          <button type="button" id="adminOrdersRefreshBtn" class="chip">Обновить</button>
+        </div>
+        <p id="adminDigitalBooksHelp" class="muted hidden">Название, файл и публикация настраиваются в разделе «Магазин», в карточке каждой книги. Здесь — история отправок и повторная выдача.</p>
+        <div id="adminDigitalOrderTabs" class="inline-actions admin-order-tabs admin-digital-order-tabs hidden">
+          <button type="button" id="adminDigitalDeliveredBtn" class="chip is-active">Успешно</button>
+          <button type="button" id="adminDigitalAttentionBtn" class="chip">Требуют внимания</button>
+        </div>
+        <div id="adminDigitalSummary" class="admin-digital-summary hidden"></div>
+        <div id="adminOrdersResult" class="muted"></div>
+        <div id="adminOrdersList" class="admin-orders-list muted">Загрузка…</div>
+      </article>
+
+      <article id="admin-panel-reviews" class="card admin-panel">
+        <h3>Отзывы</h3>
+        <p class="muted">Оценки покупателей, включая оценки без текста.</p>
+        <button type="button" id="adminReviewsRefreshBtn" class="chip">Обновить</button>
+        <div id="adminReviewsList" class="admin-reviews-list muted">Загрузка…</div>
+      </article>
+
+      <article id="admin-panel-support" class="card admin-panel">
+        <h3>Обращения поддержки</h3>
+        <div class="form-row">
+          <button type="button" id="adminReloadTickets" class="chip">Обновить</button>
+          <label class="field">
+            <span>Обращение</span>
+            <select id="adminTicketSelect"></select>
+          </label>
+        </div>
+        <div id="adminTicketDetails" class="ticket-item muted">Выберите обращение.</div>
+        <label class="field">
+          <span>Ответ</span>
+          <textarea id="adminTicketAnswer" rows="4" placeholder="Ответ пользователю"></textarea>
+        </label>
+        <button type="button" id="adminSendTicketAnswer">Отправить ответ</button>
+        <div id="adminSupportResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-notifications" class="card admin-panel">
+        <h3>Оповещения</h3>
+        <div class="admin-notification-tabs inline-actions">
+          <button type="button" id="adminNotificationGlobalTab" class="chip is-active" data-admin-notification-tab="global">Общее</button>
+          <button type="button" id="adminNotificationPersonalTab" class="chip" data-admin-notification-tab="personal">Личное</button>
+        </div>
+        <section id="adminNotificationGlobalPanel" class="admin-notification-panel is-active">
+          <div class="grid-two">
+            <label class="field">
+              <span>Заголовок</span>
+              <input id="adminNotificationGlobalTitle" type="text" maxlength="240" placeholder="Заголовок оповещения">
+            </label>
+          </div>
+          <label class="field">
+            <span>Сообщение</span>
+            <textarea id="adminNotificationGlobalMessage" rows="5" maxlength="20000" placeholder="Полный текст оповещения"></textarea>
+          </label>
+          <button type="button" id="adminNotificationGlobalSendBtn">Отправить всем</button>
+        </section>
+        <section id="adminNotificationPersonalPanel" class="admin-notification-panel">
+          <div class="grid-two">
+            <label class="field">
+              <span>Пользователь</span>
+              <select id="adminNotificationUserSelect"></select>
+            </label>
+            <label class="field">
+              <span>Заголовок</span>
+              <input id="adminNotificationPersonalTitle" type="text" maxlength="240" placeholder="Заголовок оповещения">
+            </label>
+          </div>
+          <label class="field">
+            <span>Сообщение</span>
+            <textarea id="adminNotificationPersonalMessage" rows="5" maxlength="20000" placeholder="Полный текст оповещения"></textarea>
+          </label>
+          <button type="button" id="adminNotificationPersonalSendBtn">Отправить выбранному</button>
+        </section>
+        <div id="adminNotificationsResult" class="muted"></div>
+        <h4>История оповещений</h4>
+        <div class="inline-actions">
+          <button type="button" id="adminNotificationsRefreshBtn" class="chip">Обновить</button>
+        </div>
+        <div id="adminNotificationsHistory" class="ticket-list muted">Оповещения не загружены.</div>
+      </article>
+
+      <article id="admin-panel-users" class="card admin-panel">
+        <h3>Пользователи</h3>
+        <p class="muted">Полный профиль пользователя, управление правами, отключение и сервисные действия.</p>
+        <label class="field">
+          <span>Пользователи</span>
+          <select id="adminUsersSelect"></select>
+        </label>
+        <div id="adminUsersInfo" class="muted"></div>
+        <h4>Профиль пользователя</h4>
+        <div id="adminUserProfile" class="ticket-item muted">Выберите пользователя в списке.</div>
+        <h4>Полное досье пользователя</h4>
+        <div id="adminUserProfileDossier" class="ticket-list muted">Выберите пользователя в списке.</div>
+        <div class="grid-two">
+          <label class="field checkbox-field">
+            <span>Админ</span>
+            <input id="adminUserIsAdmin" type="checkbox">
+          </label>
+          <label class="field checkbox-field">
+            <span>Активен</span>
+            <input id="adminUserIsActive" type="checkbox" checked disabled title="Сначала выберите пользователя">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Логин</span>
+            <input id="adminUserUsername" type="text" placeholder="Логин выбранного пользователя" autocomplete="off" disabled>
+          </label>
+          <label class="field">
+            <span>Новый пароль</span>
+            <input id="adminUserPassword" type="password" placeholder="Оставьте пустым, чтобы не менять" autocomplete="new-password" disabled>
+          </label>
+        </div>
+        <p class="muted">Логин и пароль применяются кнопкой «Сохранить пользователя». Пустой пароль сохраняет текущий. Новый пароль: от 10 символов, со строчной и заглавной буквами, цифрой и спецсимволом.</p>
+        <h4>Колбаски магазина</h4>
+        <label class="field">
+          <span>Баланс колбасок</span>
+          <input id="adminUserStoreSausages" type="number" min="0" step="1" value="0">
+        </label>
+        <p class="muted">Сохранение пользователя перезаписывает указанный баланс колбасок.</p>
+        <h4>Управление доступом</h4>
+        <div class="grid-three">
+          <label class="field">
+            <span>Тариф</span>
+            <select id="adminUserAccessTier">
+              <option value="premium" selected>PREMIUM</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Часов доступа</span>
+            <input id="adminUserAccessHours" type="number" min="1" max="8760" step="1" value="24">
+          </label>
+          <label class="field">
+            <span>Режим</span>
+            <select id="adminUserAccessMode">
+              <option value="replace" selected>Выдать/перезаписать</option>
+              <option value="extend">Продлить сверху</option>
+            </select>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button type="button" id="adminApplyUserAccessBtn">Применить доступ</button>
+          <button type="button" id="adminRevokeAccessBtn" class="danger">Снять доступ</button>
+          <button type="button" id="adminDisableUserAutopayBtn" class="chip">Отключить автоплатёж</button>
+        </div>
+        <h4>Безопасность</h4>
+        <div class="inline-actions">
+          <button type="button" id="adminBanUserBtn" class="danger" disabled title="Сначала выберите пользователя">Забанить</button>
+          <button type="button" id="adminUnbanUserBtn" class="chip">Разбанить</button>
+          <button type="button" id="adminRevokeUserSessionsBtn" class="chip">Завершить все сессии</button>
+          <button type="button" id="adminResetUser2faBtn" class="chip">Сбросить 2FA</button>
+        </div>
+        <div class="inline-actions">
+          <button type="button" id="adminSaveUserBtn">Сохранить пользователя</button>
+          <button type="button" id="adminRevokeAdminBtn" class="danger">Снять права админа</button>
+          <button type="button" id="adminRunUserRenewalBtn" class="chip">Тест автосписания по пользователю</button>
+          <button type="button" id="adminRefreshAdminsBtn" class="chip">Обновить список</button>
+        </div>
+        <h4>Добавить администратора по логину</h4>
+        <p class="muted">Укажите логин существующего пользователя или создайте нового администратора с паролем.</p>
+        <div class="grid-two">
+          <label class="field">
+            <span>Логин администратора</span>
+            <input id="adminNewAdminUsername" type="text" placeholder="username" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Пароль (для нового или сброса)</span>
+            <input id="adminNewAdminPassword" type="password" placeholder="Минимум 10 символов" autocomplete="new-password">
+          </label>
+        </div>
+        <p class="muted">Пароль должен содержать строчную и заглавную буквы, цифру и спецсимвол.</p>
+        <button type="button" id="adminGrantAdminBtn">Выдать права админа</button>
+        <div id="adminAdminsResult" class="muted"></div>
+      </article>
+
+      <article id="admin-panel-db" class="card admin-panel">
+        <h3>БД: журнал событий</h3>
+        <p class="muted">Поток событий из платежей, доступа, админ-аудита и тикетов поддержки с фильтрами, поиском и деталями payload.</p>
+        <div class="inline-actions" id="adminDbPresets">
+          <button type="button" class="chip" data-db-preset="all">Все события</button>
+          <button type="button" class="chip" data-db-preset="errors">Только ошибки</button>
+          <button type="button" class="chip" data-db-preset="payments">Платежи T-Bank</button>
+          <button type="button" class="chip" data-db-preset="autopay">Автосписания</button>
+          <button type="button" class="chip" data-db-preset="access">Изменения доступа</button>
+        </div>
+        <div class="grid-three">
+          <label class="field">
+            <span>Источник</span>
+            <select id="adminDbSourceFilter">
+              <option value="all">Все</option>
+              <option value="payments">Платежи</option>
+              <option value="access">Доступ</option>
+              <option value="audit">Аудит админки</option>
+              <option value="support">Поддержка</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Уровень</span>
+            <select id="adminDbLevelFilter">
+              <option value="all">Все</option>
+              <option value="info">Info</option>
+              <option value="warn">Warn</option>
+              <option value="error">Error</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>User ID</span>
+            <input id="adminDbUserIdFilter" type="number" min="0" placeholder="Напр. 13">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Поиск</span>
+            <input id="adminDbSearchFilter" type="text" placeholder="order_id / status / path / ticket">
+          </label>
+          <label class="field">
+            <span>Лимит</span>
+            <select id="adminDbLimitFilter">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button type="button" id="adminDbApplyBtn">Показать</button>
+          <button type="button" id="adminDbResetBtn" class="chip">Сбросить</button>
+          <button type="button" id="adminDbLoadDossierBtn" class="chip">Личное дело user_id</button>
+          <button type="button" id="adminDbCopyBtn" class="chip">Копировать JSON</button>
+          <label class="field checkbox-field admin-db-autorefresh">
+            <span>Автообновление</span>
+            <input id="adminDbAutoRefresh" type="checkbox">
+          </label>
+        </div>
+        <div id="adminDbMeta" class="muted"></div>
+        <div id="adminDbLogList" class="ticket-list muted">Задайте фильтры и нажмите «Показать».</div>
+        <div class="inline-actions">
+          <button type="button" id="adminDbPrevBtn" class="chip">Назад</button>
+          <button type="button" id="adminDbNextBtn" class="chip">Вперед</button>
+        </div>
+        <hr>
+        <h4>Личное дело пользователя</h4>
+        <div id="adminUserDossier" class="ticket-list muted">Укажите user_id и нажмите «Личное дело user_id».</div>
+      </article>
+
+      <article id="admin-panel-security" class="card admin-panel">
+        <h3>Аудит-лог безопасности</h3>
+        <div class="grid-three">
+          <label class="field">
+            <span>Метод</span>
+            <select id="adminAuditMethod">
+              <option value="">Все</option>
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Статус от</span>
+            <input id="adminAuditStatusFrom" type="number" min="100" max="599" placeholder="200">
+          </label>
+          <label class="field">
+            <span>Статус до</span>
+            <input id="adminAuditStatusTo" type="number" min="100" max="599" placeholder="599">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Путь содержит</span>
+            <input id="adminAuditPath" type="text" placeholder="/api/admin">
+          </label>
+          <label class="field">
+            <span>IP содержит</span>
+            <input id="adminAuditIp" type="text" placeholder="127.0.0.1">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>Admin user id</span>
+            <input id="adminAuditAdminUserId" type="number" min="1" placeholder="1">
+          </label>
+          <label class="field">
+            <span>Request ID</span>
+            <input id="adminAuditRequestId" type="text" placeholder="a1b2c3d4e5f6">
+          </label>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span>С даты (YYYY-MM-DD HH:MM:SS)</span>
+            <input id="adminAuditCreatedFrom" type="text" placeholder="2026-01-01 00:00:00">
+          </label>
+          <label class="field">
+            <span>По дату (YYYY-MM-DD HH:MM:SS)</span>
+            <input id="adminAuditCreatedTo" type="text" placeholder="2026-12-31 23:59:59">
+          </label>
+        </div>
+        <div class="inline-actions">
+          <button type="button" id="adminAuditApplyBtn">Применить фильтры</button>
+          <button type="button" id="adminAuditResetBtn" class="chip">Сбросить</button>
+          <button type="button" id="adminAuditPrevBtn" class="chip">Назад</button>
+          <button type="button" id="adminAuditNextBtn" class="chip">Вперёд</button>
+        </div>
+        <div id="adminAuditMeta" class="muted">Записи не загружены.</div>
+        <div id="adminAuditList" class="ticket-list muted">Загрузка…</div>
+      </article>
+
+      <article id="admin-panel-tools" class="card admin-panel">
+        <h3>Инструменты</h3>
+        <p class="muted">Все действия сгруппированы по задачам: аналитика, контент, продажи и импорт.</p>
+        <div class="grid-two">
+          <div class="admin-tools-column">
+            <section class="admin-tools-group">
+              <h4>Технические работы</h4>
+              <p class="muted">Плановое окно: ежедневно 02:50–04:00 МСК. Админка остаётся открытой.</p>
+              <label class="field checkbox-field">
+                <span>Принудительно закрыть сайт для пользователей</span>
+                <input type="checkbox" id="adminMaintenanceForced">
+              </label>
+              <div id="adminMaintenanceStatus" class="muted" aria-live="polite"></div>
+              <button type="button" id="adminMaintenanceSaveBtn">Сохранить режим техработ</button>
+              <div id="adminMaintenanceResult" class="muted" aria-live="polite"></div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Бонус за регистрацию</h4>
+              <p class="muted">Автоматическое начисление новым пользователям сразу после создания аккаунта.</p>
+              <label class="field checkbox-field">
+                <span>Начислять колбаски новым пользователям</span>
+                <input type="checkbox" id="adminRegistrationBonusEnabled">
+              </label>
+              <label class="field">
+                <span>Количество колбасок</span>
+                <input type="number" id="adminRegistrationBonusAmount" min="0" max="1000000" step="1" value="0">
+              </label>
+              <button type="button" id="adminRegistrationBonusSaveBtn">Сохранить бонус</button>
+              <div id="adminRegistrationBonusResult" class="muted"></div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Аналитика</h4>
+              <p class="muted">Просмотр метрик и выгрузка отчета.</p>
+              <label class="field">
+                <span>Scope статистики</span>
+                <select id="adminStatsScope">
+                  <option value="all">all</option>
+                  <option value="ad">ad</option>
+                  <option value="sausage">sausage</option>
+                </select>
+              </label>
+              <div class="inline-actions">
+                <button type="button" id="adminRefreshStats">Обновить статистику</button>
+                <button type="button" id="adminExportStats">Скачать Excel</button>
+              </div>
+              <div id="adminStatsSummary" class="muted"></div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Синхронизация цен</h4>
+              <p class="muted">Обновление цен каталога из внешнего источника. Токен вводится здесь, не в env.</p>
+              <label class="field">
+                <span>VK TOKEN (динамический)</span>
+                <input type="password" id="adminMarketSyncToken" placeholder="vk1.a.xxxxx" autocomplete="off">
+              </label>
+              <div class="inline-actions">
+                <button type="button" id="adminMarketSyncBtn">Синхронизировать цены</button>
+              </div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Оформление сайта</h4>
+              <p class="muted">Изображения интерфейса, которые видят пользователи.</p>
+              <div class="ingredients-editor">
+                <label class="field">
+                  <span>Картинка в шапке (квадратная)</span>
+                  <input type="file" id="adminHeroImageFile" accept="image/jpeg,image/png,image/webp,image/gif">
+                </label>
+                <button type="button" id="adminUploadHeroImageBtn" class="chip">Загрузить картинку шапки</button>
+                <div id="adminHeroImageResult" class="muted"></div>
+                <label class="field">
+                  <span>Значок вкладки (favicon)</span>
+                  <input type="file" id="adminFaviconFile" accept="image/png,image/jpeg,image/webp,image/gif">
+                </label>
+                <button type="button" id="adminUploadFaviconBtn" class="chip">Загрузить favicon</button>
+                <div id="adminFaviconResult" class="muted"></div>
+                <hr>
+                <h4>Социальные сети</h4>
+                <p class="muted">Иконка появится справа от названия сайта, только если для неё сохранена ссылка.</p>
+                <div class="site-social-input-grid">
+                  <label class="field">
+                    <span>ВКонтакте</span>
+                    <input type="url" data-social-input="vk" inputmode="url" autocomplete="url" placeholder="https://vk.com/...">
+                  </label>
+                  <label class="field">
+                    <span>MAX</span>
+                    <input type="url" data-social-input="max" inputmode="url" autocomplete="url" placeholder="https://max.ru/...">
+                  </label>
+                  <label class="field">
+                    <span>YouTube</span>
+                    <input type="url" data-social-input="youtube" inputmode="url" autocomplete="url" placeholder="https://youtube.com/@...">
+                  </label>
+                  <label class="field">
+                    <span>Instagram</span>
+                    <input type="url" data-social-input="instagram" inputmode="url" autocomplete="url" placeholder="https://instagram.com/...">
+                  </label>
+                  <label class="field">
+                    <span>Telegram</span>
+                    <input type="url" data-social-input="telegram" inputmode="url" autocomplete="url" placeholder="https://t.me/...">
+                  </label>
+                  <label class="field">
+                    <span>Facebook</span>
+                    <input type="url" data-social-input="facebook" inputmode="url" autocomplete="url" placeholder="https://facebook.com/...">
+                  </label>
+                  <label class="field">
+                    <span>TikTok</span>
+                    <input type="url" data-social-input="tiktok" inputmode="url" autocomplete="url" placeholder="https://tiktok.com/@...">
+                  </label>
+                </div>
+                <button type="button" id="adminSocialLinksSaveBtn">Сохранить ссылки</button>
+                <div id="adminSocialLinksResult" class="muted" aria-live="polite"></div>
+              </div>
+            </section>
+          </div>
+          <div class="admin-tools-column">
+            <section class="admin-tools-group">
+              <h4>Тарифы и скидки</h4>
+              <p class="muted">Базовые настройки платных планов и скидок.</p>
+              <div id="adminPlanSettings" class="ingredients-editor"></div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Промокоды</h4>
+              <p class="muted admin-promo-hint">
+                Скидка по промокоду действует только на <strong>первый</strong> период подписки (первый платёж).
+                Автопродления списываются по цене тарифа без промокода.
+              </p>
+              <p class="muted">Создание одноразовых кодов для выбранного тарифа.</p>
+              <div class="grid-three">
+                <label class="field">
+                  <span>Код</span>
+                  <input type="text" id="adminPromoCodeInput" placeholder="SPRING25">
+                </label>
+                <label class="field">
+                  <span>Тариф</span>
+                  <select id="adminPromoTierSelect">
+                    <option value="premium">PREMIUM</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Скидка (%)</span>
+                  <input type="number" id="adminPromoDiscountInput" min="0" max="99" step="0.01" value="10">
+                </label>
+              </div>
+              <div class="inline-actions">
+                <button type="button" id="adminCreatePromoBtn">Создать промокод</button>
+              </div>
+              <div id="adminPromoList" class="ticket-list muted">Промокоды не загружены.</div>
+            </section>
+
+            <section class="admin-tools-group">
+              <h4>Импорт данных</h4>
+              <p class="muted">Загрузка Excel-файлов для FAQ и полного каталога.</p>
+              <label class="field">
+                <span>Импорт FAQ Excel</span>
+                <input type="file" id="adminFaqExcelFile" accept=".xlsx,.xls">
+              </label>
+              <button type="button" id="adminImportFaqBtn">Импорт FAQ</button>
+              <label class="field">
+                <span>Импорт полного Excel</span>
+                <input type="file" id="adminFullExcelFile" accept=".xlsx,.xls">
+              </label>
+              <button type="button" id="adminImportFullBtn">Импорт полного каталога</button>
+              <div id="adminImportResult" class="muted"></div>
+            </section>
+            <section class="admin-tools-group">
+              <h4>Миграция БД</h4>
+              <p class="muted">Проверка и обновление схемы PostgreSQL: таблицы, индексы, seed справочника и bootstrap-админ из env. Чтобы перенести старые SQLite-БД в PostgreSQL, оставьте авто-поиск или укажите путь/пути к файлам через запятую и нажмите кнопку.</p>
+              <label class="field">
+                <span>Источник SQLite</span>
+                <input type="text" id="adminDbMigrationSource" value="auto" placeholder="auto или data/kolbabot.db,data/kolbapp.db">
+              </label>
+              <label class="checkbox-field">
+                <input type="checkbox" id="adminDbMigrationTruncate">
+                <span>Очистить PostgreSQL перед переносом SQLite</span>
+              </label>
+              <button type="button" id="adminRunDbMigrationBtn">Обновить / перенести БД</button>
+              <div id="adminDbMigrationResult" class="muted"></div>
+            </section>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
+
+<dialog id="equipmentDialog" class="dialog">
+  <article class="card">
+    <form method="dialog" class="dialog-close-wrap">
+      <button class="icon-btn" aria-label="Закрыть">×</button>
+    </form>
+    <h3 id="equipmentDialogTitle"></h3>
+    <img id="equipmentDialogImage" alt="Фото оборудования" class="hidden">
+    <p id="equipmentDialogText" class="pre-wrap"></p>
+    <a id="equipmentDialogLink" href="#" target="_blank" rel="noopener" class="button-link hidden"></a>
+    <div id="equipmentDialogRelated" class="store-related hidden" aria-live="polite"></div>
+  </article>
+</dialog>
+
+<dialog id="articlePhotoEditorDialog" class="dialog article-photo-editor-dialog">
+  <article class="card photo-editor-card">
+    <form method="dialog" class="dialog-close-wrap">
+      <button class="icon-btn" aria-label="Закрыть">×</button>
+    </form>
+    <h3>Фоторедактор статей</h3>
+    <div class="photo-editor-body">
+      <div class="photo-editor-viewport" id="photoEditorViewport">
+        <canvas id="photoEditorCanvas"></canvas>
+        <div id="photoEditorCropOverlay" class="photo-editor-crop-overlay hidden">
+          <div id="photoEditorCropFrame" class="photo-editor-crop-frame">
+            <span class="crop-frame-label" id="photoEditorCropFrameLabel">Форма кадрирования (16:9)</span>
+          </div>
+        </div>
+      </div>
+      <div class="photo-editor-controls">
+        <div class="photo-editor-preset-select">
+          <label class="field">
+            <span>Назначение (неизменяемая форма кадрирования)</span>
+            <select id="photoEditorTargetPreset">
+              <option value="cover">Обложка статьи (16:9 · 1280×720 px)</option>
+              <option value="avatar">Аватарка карточки (1:1 · 512×512 px)</option>
+              <option value="inline">Фотография в текст (4:3 · 1200×900 px)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="photo-editor-tabs">
+          <button type="button" class="chip is-active" data-editor-tab="crop">Обрезать</button>
+          <button type="button" class="chip" data-editor-tab="adjust">Коррекция</button>
+          <button type="button" class="chip" data-editor-tab="transform">Поворот</button>
+          <button type="button" class="chip" data-editor-tab="filters">Фильтры</button>
+          <button type="button" class="chip" data-editor-tab="output">Размер и качество</button>
+        </div>
+
+        <div id="editorPanelCrop" class="photo-editor-panel is-active">
+          <label class="field">
+            <span>Способ подгонки</span>
+            <select id="photoEditorResizeMode">
+              <option value="crop">Кадрировать вручную</option>
+              <option value="stretch">Растянуть всё фото по рамке</option>
+            </select>
+          </label>
+          <p id="photoEditorResizeModeHint" class="muted photo-editor-hint">Изображение не подгоняется автоматически. Перетащите его и вручную настройте масштаб внутри рамки.</p>
+          <div class="inline-actions">
+            <button type="button" id="photoEditorToggleCropBtn" class="chip">Обрезать</button>
+            <button type="button" id="photoEditorApplyCropBtn" class="chip hidden">Применить кадрирование</button>
+          </div>
+          <div class="field" id="photoEditorZoomField">
+            <span class="photo-editor-range-heading">Масштаб <output id="photoEditorZoomValue">100%</output></span>
+            <input type="range" id="photoEditorZoomSlider" min="0.1" max="8" step="0.01" value="1">
+          </div>
+        </div>
+
+        <div id="editorPanelAdjust" class="photo-editor-panel hidden">
+          <label class="field">
+            <span class="photo-editor-range-heading">Яркость <output id="photoEditorBrightnessValue">0</output></span>
+            <input type="range" id="photoEditorBrightness" min="-100" max="100" step="0.1" value="0">
+          </label>
+          <label class="field">
+            <span class="photo-editor-range-heading">Контраст <output id="photoEditorContrastValue">0</output></span>
+            <input type="range" id="photoEditorContrast" min="-100" max="100" step="0.1" value="0">
+          </label>
+          <label class="field">
+            <span class="photo-editor-range-heading">Насыщенность <output id="photoEditorSaturationValue">0</output></span>
+            <input type="range" id="photoEditorSaturation" min="-100" max="100" step="0.1" value="0">
+          </label>
+          <label class="field">
+            <span class="photo-editor-range-heading">Размытие <output id="photoEditorBlurValue">0 px</output></span>
+            <input type="range" id="photoEditorBlur" min="0" max="10" step="0.05" value="0">
+          </label>
+        </div>
+
+        <div id="editorPanelTransform" class="photo-editor-panel hidden">
+          <div class="inline-actions">
+            <button type="button" id="photoEditorRotateCcwBtn" class="chip">↺ -90°</button>
+            <button type="button" id="photoEditorRotateCwBtn" class="chip">↻ +90°</button>
+            <button type="button" id="photoEditorFlipHBtn" class="chip">↔ Отразить Г</button>
+            <button type="button" id="photoEditorFlipVBtn" class="chip">↕ Отразить В</button>
+          </div>
+        </div>
+
+        <div id="editorPanelFilters" class="photo-editor-panel hidden">
+          <div class="inline-actions photo-editor-filter-presets">
+            <button type="button" class="chip" data-filter-preset="normal">Оригинал</button>
+            <button type="button" class="chip" data-filter-preset="grayscale">Ч/Б</button>
+            <button type="button" class="chip" data-filter-preset="sepia">Сепия</button>
+            <button type="button" class="chip" data-filter-preset="vibrant">Яркий</button>
+            <button type="button" class="chip" data-filter-preset="warm">Винтаж</button>
+          </div>
+        </div>
+
+        <div id="editorPanelOutput" class="photo-editor-panel hidden">
+          <p class="muted photo-editor-hint">Размер меняется отдельно от кадрирования. Экспорт выполняется напрямую из оригинала, без растягивания экранного предпросмотра.</p>
+          <div class="photo-editor-size-grid">
+            <label class="field">
+              <span>Ширина файла, px</span>
+              <input type="number" id="photoEditorOutputWidth" min="256" max="3840" step="1" value="1280" inputmode="numeric">
+            </label>
+            <label class="field">
+              <span>Высота файла, px</span>
+              <input type="number" id="photoEditorOutputHeight" value="720" readonly>
+            </label>
+          </div>
+          <label class="field">
+            <span>Формат</span>
+            <select id="photoEditorOutputFormat">
+              <option value="image/png">PNG — без потери качества</option>
+              <option value="image/webp">WebP — высокое качество и меньший файл</option>
+              <option value="image/jpeg">JPEG — совместимый и компактный</option>
+            </select>
+          </label>
+          <label class="field" id="photoEditorQualityField">
+            <span class="photo-editor-range-heading">Качество сжатия <output id="photoEditorOutputQualityValue">98%</output></span>
+            <input type="range" id="photoEditorOutputQuality" min="0.8" max="1" step="0.005" value="0.98">
+          </label>
+          <p id="photoEditorOutputHint" class="muted photo-editor-hint">PNG сохраняется без потерь; настройка качества для него не требуется.</p>
+        </div>
+
+        <div class="photo-editor-footer">
+          <button type="button" id="photoEditorResetBtn" class="chip danger">Сбросить</button>
+          <button type="button" id="photoEditorSaveBtn">Сохранить и применить</button>
+        </div>
+      </div>
+    </div>
+  </article>
+</dialog>
+
+<div id="cookieNoticeBar" class="cookie-notice hidden" role="dialog" aria-label="Уведомление о cookie">
+  <div class="cookie-notice__inner">
+    <p>Мы используем cookie и похожие технологии для работы сайта и входа. Подробнее — в <a href="/cookie-policy" target="_blank" rel="noopener">политике cookie</a>. Нажимая «Принимаю», вы соглашаетесь с их использованием.</p>
+    <button type="button" id="cookieNoticeAccept" class="chip">Принимаю</button>
+  </div>
+</div>
+
+<div id="pdConsentGate" class="legal-gate hidden" role="dialog" aria-modal="true" aria-labelledby="pdConsentTitle">
+  <div class="legal-gate__panel card">
+    <h2 id="pdConsentTitle">Согласие на обработку персональных данных</h2>
+    <p class="muted">Для продолжения работы с сайтом необходимо подтвердить согласие на обработку персональных данных.</p>
+    <label class="field checkbox-field">
+      <input type="checkbox" id="pdConsentCheckbox">
+      <span>Я принимаю <a href="/privacy-policy" target="_blank" rel="noopener">согласие на обработку персональных данных</a></span>
+    </label>
+    <button type="button" id="pdConsentSubmit" disabled>Продолжить</button>
+  </div>
+</div>
+
+<aside id="notificationPermissionPrompt" class="notification-permission-prompt hidden" role="dialog" aria-labelledby="notificationPermissionTitle">
+  <div>
+    <strong id="notificationPermissionTitle">Push-уведомления</strong>
+    <p>Подключите системные уведомления со звуком на Android и ПК — они будут приходить даже при закрытой вкладке.</p>
+  </div>
+  <div class="notification-permission-prompt__actions">
+    <button type="button" id="notificationPermissionEnableBtn">Подключить</button>
+    <button type="button" id="notificationPermissionDismissBtn" class="chip">Не сейчас</button>
+  </div>
+</aside>
+
+<div id="appToast" class="toast hidden" role="status" aria-live="polite"></div>
+<div class="app-legal-links muted">
+  <a href="/public-offer" target="_blank" rel="noopener">Оферта</a>
+  · <a href="/subscription-agreement" target="_blank" rel="noopener">Подписка</a>
+  · <a href="/payment-credentials" target="_blank" rel="noopener">Платёжные данные</a>
+  · <a href="/privacy-policy" target="_blank" rel="noopener">Персональные данные</a>
+  · <a href="/cookie-policy" target="_blank" rel="noopener">Cookie</a>
+  · <a href="mailto:obolo4ki@kolbabot.ru">obolo4ki@kolbabot.ru</a>
+</div>
+
+<script type="module" src="/static/app.js?v=20261015-native-banners-1"></script>
+</body>
+</html>

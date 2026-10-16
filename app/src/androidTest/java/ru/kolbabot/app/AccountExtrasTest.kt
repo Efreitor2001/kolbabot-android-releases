@@ -34,8 +34,8 @@ class AccountExtrasTest {
         } }
         compose.onNodeWithText("Проверить промокод").performClick()
         compose.onNodeWithText("Промокод SAVE25").assertExists()
-        compose.onNodeWithText("Первый период:", substring = true).assertTextContains("590,00", substring = true)
-        compose.onNodeWithText("Далее:", substring = true).assertTextContains("790,00", substring = true)
+        compose.onNodeWithText("Первый период:", substring = true).assertTextContains("590 ₽", substring = true)
+        compose.onNodeWithText("Далее:", substring = true).assertTextContains("790 ₽", substring = true)
         assertEquals(1, api.posts.size)
         assertEquals("/api/payments/tbank/preview-promo", api.posts[0].first)
         assertEquals(setOf("promo_code"), api.posts[0].second.keys().asSequence().toSet())
@@ -74,8 +74,10 @@ class AccountExtrasTest {
             .put("email_verified", true).put("phone", "+79991234567").put("oauth_provider", "mail_ru")) } }
         compose.onNodeWithText("Иван Петров").assertExists()
         compose.onNodeWithText("Email подтверждён").assertExists()
-        compose.onNodeWithText("Телефон: +79991234567").assertExists()
-        compose.onNodeWithText("Основной вход: Mail.ru").assertExists()
+        compose.onNodeWithText("Телефон").assertExists()
+        compose.onNodeWithText("+79991234567").assertExists()
+        compose.onNodeWithText("Основной вход").assertExists()
+        compose.onNodeWithText("Mail.ru").assertExists()
         compose.onNodeWithText("123,45 колбасок").assertExists()
         assertTrue(api.posts.isEmpty())
     }

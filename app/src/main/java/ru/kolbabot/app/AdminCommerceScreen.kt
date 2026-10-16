@@ -34,50 +34,65 @@ import org.json.JSONObject
     }
 }
 
+/** Only these customer-facing fields are rendered. Raw API metadata never becomes UI text. */
+internal fun adminCartItemTitle(item: JSONObject): String {
+    val product = item.optJSONObject("product") ?: item.optJSONObject("store_product") ?: JSONObject()
+    fun text(data: JSONObject, key: String) = data.optString(key).takeUnless { it == "null" }.orEmpty().trim()
+    val title = text(item, "title").ifBlank { text(item, "product_title") }.ifBlank { text(product, "title") }
+        .ifBlank { "Товар #${item.optLong("product_id", product.optLong("id"))}" }
+    val variant = text(item, "variant_label").ifBlank { text(product, "variant_label") }
+        .ifBlank { item.optJSONObject("variant")?.let { text(it, "label") }.orEmpty() }
+    return if (variant.isBlank() || title.contains(variant, ignoreCase = true)) title else "$title · $variant"
+}
+
+internal fun adminCartDate(raw: String): String {
+    val normalized = raw.trim().replace(' ', 'T').replace(Regex("([+-]\\d{2})$"), "$1:00")
+        .replace(Regex("([+-]\\d{2})(\\d{2})$"), "$1:$2")
+    val moscow = java.time.ZoneId.of("Europe/Moscow")
+    val date = runCatching { java.time.OffsetDateTime.parse(normalized).atZoneSameInstant(moscow).toLocalDateTime() }.getOrNull()
+        ?: runCatching { java.time.LocalDateTime.parse(normalized) }.getOrNull()
+    return date?.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm", java.util.Locale.forLanguageTag("ru-RU")))?.plus(" МСК") ?: "без даты"
+}
+
 @Composable private fun AdminCarts(api: ApiClient, onBack: () -> Unit) {
-    var query by rememberSaveable { mutableStateOf("") }
-    RemotePage("Корзины покупателей", api, "/api/admin/store/carts?limit=500", onBack) { data, reload ->
-        BackHandler(query.isNotBlank()) { query = "" }
+    RemotePage("Собранные корзины", api, "/api/admin/store/carts?limit=500", onBack,
+        subtitle = "Актуальные непустые корзины пользователей: состав, количество товаров и потенциальная сумма заказа.") { data, reload ->
+        OutlinedButton(onClick = reload) { Text("Обновить") }
         val summary = data.optJSONObject("summary") ?: JSONObject()
-        AdminListEntry("cart-summary", "Сводка", "${summary.optInt("carts_count")} · ${money(summary.optLong("total_kopecks"))}") {
-            AdminCopyField("Корзин", summary.optInt("carts_count").toString())
-            AdminCopyField("Позиций", summary.optInt("positions_count").toString())
-            AdminCopyField("Товаров", summary.optInt("items_quantity").toString())
-            AdminCopyField("Потенциальная сумма", money(summary.optLong("total_kopecks")))
-            AdminCopyField("Средняя корзина", money(summary.optLong("average_kopecks")))
+        SectionCard {
+            Text("Корзин: ${summary.optInt("carts_count")}", style = MaterialTheme.typography.titleSmall)
+            Text("Позиций: ${summary.optInt("positions_count")}")
+            Text("Товаров: ${summary.optInt("items_quantity")}")
+            Text("Потенциальная сумма: ${money(summary.optLong("total_kopecks"))}")
+            Text("Средний чек: ${money(summary.optLong("average_kopecks"))}")
         }
-        OutlinedTextField(query, { query = it }, label = { Text("Найти покупателя, почту или товар") }, modifier = Modifier.fillMaxWidth())
-        TextButton(onClick = reload) { Text("Обновить корзины") }
-        val all = data.items("items")
-        val carts = all.filter { query.isBlank() || it.toString().contains(query.trim(), true) }
-        if (all.size >= 500) Text("Показаны 500 последних корзин; поиск по загруженным данным.")
-        if (carts.isEmpty()) Text("Корзины не найдены.")
-        var visible by remember(query, data) { mutableIntStateOf(30) }
-        carts.take(visible).forEach { cart ->
-            key(cart.optLong("user_id")) {
-                AdminListEntry("cart-${cart.optLong("user_id")}", cart.optString("username", "Покупатель"),
-                    "${cart.optInt("positions_count")} поз. · ${cart.optInt("items_quantity")} шт. · ${money(cart.optLong("total_kopecks"))}") {
-                    AdminCopyField("Пользователь", cart.optLong("user_id").toString())
-                    AdminCopyField("Почта", cart.optString("email"))
-                    AdminCopyField("Обновлена", cart.optString("updated_at"))
-                    AdminListEntry("cart-items-${cart.optLong("user_id")}", "Состав корзины", count = cart.items("items").size) {
-                        AdminCopyField("Общий вес, г", cart.optLong("total_weight_grams").toString())
-                        cart.items("items").forEach { item ->
-                            HorizontalDivider()
-                            AdminCopyField("Товар", item.optString("title"))
-                            AdminCopyField("ID товара", item.optLong("product_id").toString())
-                            AdminCopyField("Количество", item.optInt("quantity").toString())
-                            AdminCopyField("Цена", money(item.optLong("price_kopecks")))
-                            AdminCopyField("Сумма", money(item.optLong("amount_kopecks")))
-                            AdminCopyField("Вес, г", item.optLong("weight_grams").toString())
-                            if (!item.optBoolean("is_active")) Text("Товар скрыт от покупателей")
-                        }
-                        AdminJsonDetails(cart)
+        val carts = data.items("items")
+        if (carts.isEmpty()) Text("Собранных корзин пока нет.")
+        carts.forEach { cart ->
+            val customerId = cart.optLong("user_id")
+            val customer = cart.optString("username").takeUnless { it.isBlank() || it == "null" } ?: "Пользователь #$customerId"
+            val email = cart.optString("email").takeUnless { it.isBlank() || it == "null" }.orEmpty()
+            val identity = listOf("Пользователь #$customerId", email).filter(String::isNotBlank).joinToString(" · ")
+            AdminListEntry("cart-$customerId", customer,
+                "$identity\n${cart.optInt("items_quantity")} шт. · ${money(cart.optLong("total_kopecks"))}") {
+                Text("Обновлена: ${adminCartDate(cart.optString("updated_at"))}", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                Text("${cart.optInt("positions_count")} поз. · ${cart.optLong("total_weight_grams")} г", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                cart.items("items").forEachIndexed { index, item ->
+                    val product = item.optJSONObject("product") ?: item.optJSONObject("store_product") ?: JSONObject()
+                    val quantity = item.optInt("quantity", 1).coerceAtLeast(1)
+                    val unitPrice = item.optLong("price_kopecks", product.optLong("price_kopecks"))
+                    val amount = item.optLong("amount_kopecks", unitPrice * quantity)
+                    if (index > 0) HorizontalDivider(color = SiteColors.Border)
+                    Column(Modifier.fillMaxWidth().testTag("admin-cart-$customerId-item-$index"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(adminCartItemTitle(item), style = MaterialTheme.typography.titleSmall)
+                        Text("$quantity шт. × ${money(unitPrice)} — ${money(amount)}")
+                        if (item.has("is_active") && !AdminPeopleContract.flag(item, "is_active")) Text("Товар скрыт", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
                     }
                 }
+                HorizontalDivider(color = SiteColors.Border)
+                Text("Итого: ${money(cart.optLong("total_kopecks"))}", style = MaterialTheme.typography.titleMedium)
             }
         }
-        if (visible < carts.size) TextButton(onClick = { visible += 30 }) { Text("Показать ещё корзины") }
     }
 }
 

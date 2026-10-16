@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 class MainActivity : ComponentActivity() {
     private var openNotifications by mutableStateOf(false)
@@ -60,6 +62,8 @@ class MainActivity : ComponentActivity() {
     var adminReturnTab by rememberSaveable { mutableIntStateOf(0) }
     var adminReturnSection by rememberSaveable { mutableStateOf("store") }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val chrome = remember { SiteChromeState() }
     fun leaveAdmin() {
         tab = adminReturnTab.takeIf { it in 0..4 } ?: 0
         selectedSection = adminReturnSection.takeUnless { it == "admin" }.orEmpty().ifBlank { "store" }
@@ -82,6 +86,33 @@ class MainActivity : ComponentActivity() {
         }
     }
     LaunchedEffect(api) { NativeNavigation.requests.collect { navigate(it) } }
+    SideEffect {
+        chrome.user = user
+        chrome.onAccount = { navigate(AppDestination("account")) }
+        chrome.onCart = { chrome.openCartRequest++; navigate(AppDestination("store")) }
+        chrome.onNotifications = { navigate(AppDestination("notifications")) }
+        chrome.onNavigate = { navigate(AppDestination(it)) }
+        chrome.onLogout = {
+            if (!chrome.busy) scope.launch {
+                chrome.busy = true; chrome.error = ""
+                try {
+                    disablePush(context, api)
+                    api.post("/api/auth/logout")
+                    cancelNotificationSync(context); api.clearSession()
+                    user = null; verifiedPushUserId = 0; chrome.cartCount = 0
+                    revision++; navigate(AppDestination("account"))
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { chrome.error = failure.message ?: "Не удалось выйти из аккаунта." }
+                finally { chrome.busy = false }
+            }
+        }
+    }
+    LaunchedEffect(api, user?.optLong("id"), revision) {
+        chrome.access = null
+        if (user != null) try { chrome.access = api.get("/api/access/status") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* The header keeps the unknown tier instead of inventing access. */ }
+    }
     LaunchedEffect(incomingLink) {
         incomingLink?.let {
             val destination = nativeDestination(it, api.baseUrl)
@@ -112,6 +143,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     Scaffold(bottomBar = {
+        if (tab != 5 && (checking || user != null || tab != 4)) {
         SiteBottomNavigation(selectedSection, moreOpen) { section ->
             if (section == "more") moreOpen = true else {
                 moreOpen = false
@@ -121,10 +153,12 @@ class MainActivity : ComponentActivity() {
                 tab = when (section) { "recipes" -> 1; "custom" -> 3; "account" -> 4; else -> 0 }
             }
         }
+        }
     }) { insets ->
         Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
             Box(Modifier.widthIn(max = 900.dp).fillMaxSize()) {
               screens.SaveableStateProvider("${user?.optLong("id") ?: 0}_$tab") {
+                CompositionLocalProvider(LocalSiteChrome provides chrome.takeUnless { tab == 4 && user == null }) {
                 when {
                     checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     user?.optBoolean("requires_pd_consent") == true -> ConsentScreen(api) { revision++ }
@@ -140,6 +174,7 @@ class MainActivity : ComponentActivity() {
                         pendingSection = ""; onNotificationsOpened()
                     }, initialSection = pendingSection, onSectionOpened = { pendingSection = "" }, initialOrderId = pendingOrder,
                         onOrderOpened = { pendingOrder = "" }, onSectionChanged = { selectedSection = it }) { user = null; verifiedPushUserId = 0; revision++ }
+                }
                 }
               }
             }

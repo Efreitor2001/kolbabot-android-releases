@@ -30,7 +30,7 @@ internal object AdminUserPickerContract {
 @Composable
 internal fun AdminUserPicker(api: ApiClient, selectedId: Long?, onSelected: (Long?) -> Unit,
     label: String = "Пользователь", enabled: Boolean = true, allowEmpty: Boolean = false,
-    emptyLabel: String = "Все пользователи", tag: String = "admin-user-picker") {
+    emptyLabel: String = "Все пользователи", tag: String = "admin-user-picker", onUserResolved: ((JSONObject) -> Unit)? = null) {
     val owner = api.userId
     var users by remember(api, owner) { mutableStateOf<List<JSONObject>>(emptyList()) }
     var loading by remember(api, owner) { mutableStateOf(true) }
@@ -75,6 +75,8 @@ internal fun AdminUserPicker(api: ApiClient, selectedId: Long?, onSelected: (Lon
     }
     val available = (users + listOfNotNull(extraUser, lookupUser)).distinctBy { it.optLong("id") }
     val selected = available.firstOrNull { it.optLong("id") == selectedId }
+    val currentOnResolved by rememberUpdatedState(onUserResolved)
+    LaunchedEffect(selected) { selected?.let { currentOnResolved?.invoke(it) } }
     val filtered = available.filter { AdminUserPickerContract.matches(it, query) || (lookupId != null && it.optLong("id") == lookupId) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {

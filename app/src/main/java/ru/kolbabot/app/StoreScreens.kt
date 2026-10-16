@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,14 +23,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -52,7 +57,13 @@ private fun photoUrl(api: ApiClient, row: JSONObject): String {
 @Composable
 fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () -> Unit = {}, onNavigate: (String) -> Unit = {}) {
     var route by rememberSaveable { mutableStateOf("catalog") }
-    var cartOrigin by rememberSaveable { mutableStateOf("catalog") }
+    var cartRevision by remember { mutableIntStateOf(0) }
+    var cartScrollRequest by remember { mutableIntStateOf(0) }
+    var handledCartScroll by remember { mutableIntStateOf(0) }
+    var handledChromeRequest by remember { mutableIntStateOf(0) }
+    var cartRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    val cartTarget = remember { BringIntoViewRequester() }
+    val chrome = LocalSiteChrome.current
     var productId by rememberSaveable { mutableLongStateOf(0L) }
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
@@ -72,12 +83,23 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         error = ""
         try { catalog = api.get("/api/store") } catch (e: Exception) { error = storeFailure(e) }
     }
+    LaunchedEffect(route, cartScrollRequest, catalog) {
+        if (route == "catalog" && catalog != null && cartScrollRequest > handledCartScroll) {
+            withFrameNanos { }
+            cartTarget.bringIntoView()
+            handledCartScroll = cartScrollRequest
+        }
+    }
+    LaunchedEffect(chrome?.openCartRequest) {
+        val request = chrome?.openCartRequest ?: 0
+        if (request > handledChromeRequest) { route = "catalog"; cartScrollRequest++; handledChromeRequest = request }
+    }
     fun back() {
-        route = if (route == "cart") cartOrigin else "catalog"
+        route = "catalog"
         if (route == "catalog") productId = 0
         revision++
     }
-    fun openCart() { cartOrigin = route; route = "cart" }
+    fun openCart() { route = "catalog"; cartScrollRequest++ }
     BackHandler(route != "catalog") { back() }
     fun addProduct(id: Long) {
         if (busy) return
@@ -85,7 +107,9 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         scope.launch {
             try {
                 val products = catalog ?: api.get("/api/store").also { catalog = it }
-                storeCart.add(id, products)
+                cartRows = storeCart.add(id, products).items("items")
+                chrome?.cartCount = cartRows.sumOf { it.optInt("quantity", 1) }
+                cartRevision++
                 message = "Товар добавлен в корзину"
             } catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
         }
@@ -96,10 +120,9 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                 { productId = it; message = ""; error = "" }, ::addProduct, ::openCart, catalog?.optJSONObject("review_bonus_settings"))
             return
         }
-        "cart" -> { CartScreen(api, catalog, ::back) { onNavigate("account") }; return }
     }
-    Page("Магазин", "Ингредиенты, оболочки и полезные инструменты — в одном каталоге.") {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Page("Всё для домашнего производства", "Ингредиенты, оболочки и полезные инструменты — в одном каталоге.", eyebrow = "Магазин") {
+        if (chrome == null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(::openCart, Modifier.weight(1f), colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)) {
                 Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(20.dp))
@@ -116,59 +139,87 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         if (data.optBoolean("premium_active")) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
             Text("Ваша скидка PREMIUM: ${data.optInt("premium_discount_percent")}%", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
+        SectionCard {
+        Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("КАТАЛОГ", color = SiteColors.Brand, fontSize = 10.sp, lineHeight = 13.sp,
+                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
+            Text("Выберите товары", fontSize = 17.28.sp, fontWeight = FontWeight.Bold)
+        }
         OutlinedTextField(search, { search = it; visibleCount = 30 }, Modifier.fillMaxWidth(),
-            label = { Text("Поиск") }, singleLine = true, shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = MaterialTheme.colorScheme.surface))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(category.isEmpty(), { category = ""; visibleCount = 30 }, { Text("Все") }, colors = storeChipColors())
+            label = { Text("Поиск") }, singleLine = true, shape = RoundedCornerShape(12.dp),
+            placeholder = { Text("Оболочка, специи, нож…") },
+            trailingIcon = { Text("⌕", color = Color(0xFF778195), fontSize = 22.sp) })
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(category.isEmpty(), { category = ""; visibleCount = 30 },
+                { Text("Все (${visibleStoreProducts(data.items("products"), "", "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
             data.items("categories").forEach { cat ->
                 val id = cat.optString("id", cat.optString("category_id"))
-                FilterChip(category == id, { category = id; visibleCount = 30 }, { Text(cat.optString("title", cat.optString("name"))) }, colors = storeChipColors())
+                FilterChip(category == id, { category = id; visibleCount = 30 },
+                    { Text(cat.optString("title", cat.optString("name")) + " (${visibleStoreProducts(data.items("products"), id, "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                    Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
             }
         }
+        }
+        HorizontalDivider(Modifier.padding(top = 4.dp, bottom = 6.dp), color = Color(0x121D2A4E))
         val filtered = remember(data, category, search) { visibleStoreProducts(data.items("products"), category, search) }
-        Text("Найдено: ${filtered.size}", style = MaterialTheme.typography.labelLarge)
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = if (maxWidth > 388.dp && LocalDensity.current.fontScale <= 1.3f) 2 else 1
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            val columns = if (LocalConfiguration.current.screenWidthDp <= 420 || LocalDensity.current.fontScale > 1.3f) 1
+                else ((maxWidth.value + 14) / 219).toInt().coerceAtLeast(1)
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 filtered.take(visibleCount).chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         row.forEach { representative ->
                             key(variantGroup(representative).ifBlank { representative.optString("id") }, category, search) {
-                                StoreProductCard(api, representative, data.items("products"), busy, Modifier.weight(1f), grid = columns > 1,
+                                StoreProductCard(api, representative, data.items("products"), busy, Modifier.weight(1f),
                                     onOpen = { productId = it; route = "product" }, onAdd = ::addProduct)
                             }
                         }
-                        if (row.size < columns) Spacer(Modifier.weight(1f))
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
         }
         if (filtered.isEmpty()) SectionCard { Text("По вашему запросу ничего не найдено.") }
         if (filtered.size > visibleCount) OutlinedButton({ visibleCount += 30 }, Modifier.fillMaxWidth()) { Text("Показать ещё") }
+        }
+        Column(Modifier.fillMaxWidth().bringIntoViewRequester(cartTarget).testTag("storeInlineCart")) {
+            CartContent(api, data, cartRevision, { onNavigate("account") }) { current ->
+                cartRows = current.items("items")
+                chrome?.cartCount = cartRows.sumOf { it.optInt("quantity", 1) }
+            }
+        }
     }
 }
 
 @Composable private fun storeChipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = MaterialTheme.colorScheme.tertiary,
     selectedLabelColor = MaterialTheme.colorScheme.onTertiary,
-    containerColor = MaterialTheme.colorScheme.surface)
+    containerColor = Color(0xFFF2F4F8), labelColor = Color(0xFF536074))
+
+@Composable private fun storeVariantColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = Color(0xFFEAF6F1), selectedLabelColor = Color(0xFF0B6050),
+    containerColor = MaterialTheme.colorScheme.surface, labelColor = MaterialTheme.colorScheme.onSurface)
+
+@Composable private fun storeVariantBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
+    enabled = true, selected = selected, borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f),
+    selectedBorderColor = Color(0xFF147A66), borderWidth = 1.dp, selectedBorderWidth = 1.dp)
 
 @Composable private fun StoreProductCard(api: ApiClient, representative: JSONObject, products: List<JSONObject>, busy: Boolean,
-                                        modifier: Modifier, grid: Boolean, onOpen: (Long) -> Unit, onAdd: (Long) -> Unit) {
+                                        modifier: Modifier, onOpen: (Long) -> Unit, onAdd: (Long) -> Unit) {
     val variants = remember(products, representative) { products.filter { variantGroup(representative).isNotBlank() && variantGroup(it) == variantGroup(representative) } }
     var selectedVariant by rememberSaveable { mutableLongStateOf(representative.optLong("id")) }
     val product = variants.firstOrNull { it.optLong("id") == selectedVariant } ?: representative
     val id = product.optLong("id")
-    Card(modifier.testTag("store-product-$id"), shape = RoundedCornerShape(18.dp),
+    Card(modifier.testTag("store-product-$id"), shape = RoundedCornerShape(17.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (grid) NetworkImage(photoUrl(api, product), product.optString("title"), Modifier.fillMaxWidth().height(124.dp)
-                .clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = "Подробнее") { onOpen(id) })
+        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (photoUrl(api, product).isNotBlank()) NetworkImage(photoUrl(api, product), product.optString("title"), Modifier.fillMaxWidth().aspectRatio(1.6f)
+                .clip(RoundedCornerShape(13.dp)).clickable(onClickLabel = "Подробнее") { onOpen(id) })
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = "Подробнее") { onOpen(id) },
                 horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!grid) NetworkImage(photoUrl(api, product), product.optString("title"), Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(product.optString("title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     if (product.optString("variant_label").isNotBlank()) Text(product.optString("variant_label"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -176,14 +227,15 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (variants.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (variants.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 variants.forEach { variant -> FilterChip(variant.optLong("id") == id, { selectedVariant = variant.optLong("id") },
-                    { Text(variant.optString("variant_label").ifBlank { variant.optString("title") } + " · " + money(variant.optLong("price_kopecks"))) }, colors = storeChipColors()) }
+                    { Text(variant.optString("variant_label").ifBlank { variant.optString("title") } + " · " + money(variant.optLong("price_kopecks"))) },
+                    colors = storeVariantColors(), border = storeVariantBorder(variant.optLong("id") == id), shape = RoundedCornerShape(10.dp)) }
             }
-            Text(money(product.optLong("price_kopecks")), color = MaterialTheme.colorScheme.tertiary,
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(money(product.optLong("price_kopecks")), color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Button({ onAdd(id) }, Modifier.fillMaxWidth(), enabled = !busy, shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) { Text("В корзину") }
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF04C160), contentColor = Color.White)) { Text("В корзину") }
         }
     }
 }
@@ -268,19 +320,20 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
             NetworkImage(photoUrl(api, p), p.optString("title"), Modifier.fillMaxWidth().height(240.dp))
             Text(p.optString("title"), style = MaterialTheme.typography.headlineSmall)
             TextButton(onClick = { shareLink(context, p.optString("title"), "${api.baseUrl}/?product=$id#store") }) { Text("Поделиться") }
-            Text(money(p.optLong("price_kopecks")), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            Text(money(p.optLong("price_kopecks")), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.ExtraBold)
             val oldPrice = p.optLong("base_price_kopecks")
             if (oldPrice > p.optLong("price_kopecks")) Text("Без скидки: ${money(oldPrice)}")
             if (p.optString("variant_label").isNotBlank()) Text("Вариант: ${p.optString("variant_label")}")
             val variants = p.items("variants")
             if (variants.isNotEmpty()) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 variants.forEach { v -> FilterChip(v.optLong("id") == id, { choose(v.optLong("id")) },
-                    { Text(v.optString("variant_label").ifBlank { v.optString("title") } + " · " + money(v.optLong("price_kopecks"))) }) }
+                    { Text(v.optString("variant_label").ifBlank { v.optString("title") } + " · " + money(v.optLong("price_kopecks"))) },
+                    colors = storeVariantColors(), border = storeVariantBorder(v.optLong("id") == id), shape = RoundedCornerShape(10.dp)) }
             }
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
             if (error.isNotBlank()) ErrorMessage(error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ add(id) }, enabled = !busy) { Text("В корзину") }
+                Button({ add(id) }, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF04C160), contentColor = Color.White)) { Text("В корзину") }
                 OutlinedButton(cart) { Text("Открыть корзину") }
             }
             if (p.optString("product_type") == "digital_book") Text("Электронная книга. После оплаты доставляется на указанный e-mail.")
@@ -341,27 +394,22 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
 }
 
 @Composable
-private fun CartScreen(api: ApiClient, originalCatalog: JSONObject?, onBack: () -> Unit, onLogin: () -> Unit) {
+private fun CartContent(api: ApiClient, originalCatalog: JSONObject?, refreshKey: Int, onLogin: () -> Unit, onCartChanged: (JSONObject) -> Unit) {
     var cart by remember { mutableStateOf<JSONObject?>(null) }
     var catalog by remember { mutableStateOf(originalCatalog) }
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var checkout by rememberSaveable { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val storeCart = remember(api) { StoreCart(context, api) }
-    LaunchedEffect(api, revision) {
+    LaunchedEffect(api, revision, refreshKey) {
         error = ""
-        try { catalog = api.get("/api/store"); cart = storeCart.load(catalog!!) }
+        try { catalog = originalCatalog ?: api.get("/api/store"); cart = storeCart.load(catalog!!); onCartChanged(cart!!) }
         catch (e: Exception) { error = storeFailure(e) }
     }
-    BackHandler(checkout) { checkout = false; revision++ }
-    if (checkout && cart != null && catalog != null) {
-        CheckoutScreen(api, cart!!, catalog!!) { checkout = false; revision++ }
-        return
-    }
-    Page("Корзина", if (api.authenticated) "Синхронизируется с вашим аккаунтом на сайте" else "Сохранена на этом устройстве. После входа добавится к корзине аккаунта.", onBack) {
+    SectionCard("Корзина") {
+        Text("Ваш заказ · Товары и доставка", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (error.isNotBlank()) ErrorMessage(error)
         if (cart == null && error.isBlank()) CircularProgressIndicator()
         cart?.optString("merge_notice")?.takeIf { it.isNotBlank() }?.let { Text(it) }
@@ -383,7 +431,7 @@ private fun CartScreen(api: ApiClient, originalCatalog: JSONObject?, onBack: () 
                         else JSONObject(row.toString()).put("quantity", quantity.coerceAtMost(999))
                     }
                     scope.launch {
-                        try { cart = storeCart.save(update, catalog ?: JSONObject()) }
+                        try { cart = storeCart.save(update, catalog ?: JSONObject()); onCartChanged(cart!!) }
                         catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
                     }
                 }
@@ -402,7 +450,7 @@ private fun CartScreen(api: ApiClient, originalCatalog: JSONObject?, onBack: () 
             Text("Товары: ${money(subtotal)}", style = MaterialTheme.typography.titleLarge)
             if (subtotal < minimum) Text("До минимального заказа осталось ${money(minimum - subtotal)}")
             if (!api.authenticated) Button(onLogin, Modifier.fillMaxWidth(), enabled = !busy) { Text("Войти для оформления") }
-            else Button({ checkout = true }, Modifier.fillMaxWidth(), enabled = !busy && catalog != null && subtotal >= minimum) { Text("Оформить заказ") }
+            else if (catalog != null && cart != null) CheckoutContent(api, cart!!, catalog!!, busy) { revision++ }
         }
     }
 }
@@ -422,7 +470,12 @@ internal fun nativeDeliveryPrice(totalWeight: Long, sizes: List<JSONObject>): Lo
 }
 
 @Composable
-private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject, onBack: () -> Unit) {
+internal fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject, onBack: () -> Unit) {
+    Page("Оформление заказа", "Оплата через Т-Банк", onBack) { CheckoutContent(api, cart, catalog, onBack = onBack) }
+}
+
+@Composable
+private fun CheckoutContent(api: ApiClient, cart: JSONObject, catalog: JSONObject, cartUpdating: Boolean = false, onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("store_checkout", Context.MODE_PRIVATE) }
     val uid = catalog.optLong("user_id", api.userId)
@@ -436,12 +489,18 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
     var phone by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
-    var method by rememberSaveable { mutableStateOf(if (allDigital) "digital" else "") }
-    var pointQuery by rememberSaveable { mutableStateOf("") }
-    var points by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var method by rememberSaveable { mutableStateOf(if (allDigital) "digital" else catalog.items("delivery_methods").firstOrNull()?.optString("code") ?: "") }
+    var showPointPicker by rememberSaveable { mutableStateOf(false) }
     var point by remember { mutableStateOf<JSONObject?>(null) }
     var manualPoint by rememberSaveable { mutableStateOf(false) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
+    var quotedFor by remember { mutableStateOf("") }
+    var estimate by remember { mutableStateOf<JSONObject?>(null) }
+    var deliveryLoading by remember { mutableStateOf(false) }
+    var estimateLoading by remember { mutableStateOf(false) }
+    var deliveryError by remember { mutableStateOf("") }
+    var estimateError by remember { mutableStateOf("") }
+    var deliveryAttempt by remember { mutableIntStateOf(0) }
     var useRewards by rememberSaveable { mutableStateOf(false) }
     var offer by rememberSaveable { mutableStateOf(false) }
     var privacy by rememberSaveable { mutableStateOf(false) }
@@ -465,8 +524,53 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
     val cashbackPercent = if (catalog.optBoolean("paid_premium_cashback")) rewardRules?.optInt("premium_percent", 10) ?: 10 else rewardRules?.optInt("standard_percent", 5) ?: 5
     val cashback = if (rewardRules?.optInt("is_active") == 1) (total - spent) * cashbackPercent.coerceIn(0, 100) / 100 else 0
     val minimumOrder = if (allDigital) 0 else catalog.optJSONObject("store_settings")?.optLong("minimum_order_kopecks") ?: 0
-    val shipping = if (allDigital) 0L else if (method == "ozon" && ozonApi && !manualPoint) quote?.optLong("price_kopecks")
+    val pointId = if (!allDigital && method == "ozon" && !manualPoint) point?.optLong("delivery_point_id") ?: 0L else 0L
+    val quoteKey = if (ozonApi && pointId > 0) OzonDelivery.quoteKey(pointId, phone, rows, catalog.optBoolean("premium_active")) else ""
+    val currentQuote = quote?.takeIf { quoteKey.isNotBlank() && quotedFor == quoteKey }
+    val estimateDays = OzonDelivery.estimateDays(estimate, pointId)
+    val deliveryDays = currentQuote?.optInt("estimated_delivery_days")?.takeIf { it > 0 } ?: estimateDays
+    val shipping = if (allDigital) 0L else if (method == "ozon" && ozonApi && !manualPoint) currentQuote?.optLong("price_kopecks")
         else nativeDeliveryPrice(weight, catalog.items("delivery_sizes"))
+    LaunchedEffect(allDigital) {
+        if (allDigital) method = "digital"
+        else if (method == "digital") method = catalog.items("delivery_methods").firstOrNull()?.optString("code") ?: ""
+    }
+    LaunchedEffect(pointId, deliveryAttempt) {
+        estimate = null; estimateError = ""; estimateLoading = false
+        if (pointId <= 0) return@LaunchedEffect
+        estimateLoading = true
+        try {
+            val response = api.post("${OzonDelivery.API}estimate", JSONObject().put("delivery_point_id", pointId)).optJSONObject("estimate")
+            ensureActive()
+            estimate = response
+            if (OzonDelivery.estimateDays(response, pointId) <= 0) estimateError = "Ozon пока не сообщил срок доставки для этого ПВЗ."
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { estimateError = storeFailure(e) }
+        finally { estimateLoading = false }
+    }
+    LaunchedEffect(quoteKey, deliveryAttempt) {
+        quote = null; quotedFor = ""; deliveryError = ""; deliveryLoading = false
+        if (quoteKey.isBlank()) return@LaunchedEffect
+        delay(280)
+        deliveryLoading = true
+        try {
+            val response = api.post("${OzonDelivery.API}quote", cartRequest(rows)
+                .put("delivery_point_id", pointId).put("phone", phone.trim())).optJSONObject("quote")
+            ensureActive()
+            if (response == null || response.optJSONObject("delivery_point")?.optLong("delivery_point_id") != pointId)
+                throw IllegalStateException("Ozon не подтвердил доставку в выбранный ПВЗ. Повторите расчёт.")
+            quote = response; quotedFor = quoteKey
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { deliveryError = storeFailure(e) }
+        finally { deliveryLoading = false }
+    }
+    if (showPointPicker) OzonPickupPicker(api, point, { showPointPicker = false }) { selected ->
+        point = selected
+        manualPoint = OzonDelivery.manual(selected)
+        address = selected.optString("full_address")
+        quote = null; quotedFor = ""; estimate = null
+        showPointPicker = false
+    }
     fun clearAttempt() {
         prefs.edit().remove(prefix + "payload").remove(prefix + "key").remove(prefix + "order").remove(prefix + "payment").commit()
         pendingPayload = ""; attemptKey = ""; orderId = ""; paymentUrl = ""
@@ -480,7 +584,7 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
             else "Заказ создан. Проверьте сумму и перейдите к оплате."
     }
     fun submit() {
-        if (busy) return
+        if (busy || cartUpdating) return
         error = ""; busy = true
         scope.launch {
             try {
@@ -490,9 +594,12 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
                         .put("use_sausages", useRewards).put("accept_public_offer", offer)
                         .put("accept_privacy_policy", privacy).put("accept_age_18", adult)
                     if (method == "ozon" && !allDigital) {
-                        if (manualPoint) body.put("ozon_manual_pvz_address", address.trim())
+                        if (manualPoint) {
+                            body.put("ozon_manual_pvz_address", address.trim())
+                            point?.let { body.put("ozon_manual_pvz_name", OzonDelivery.pointName(it)) }
+                        }
                         else body.put("ozon_delivery_point_id", point?.optLong("delivery_point_id") ?: 0L)
-                        if (ozonApi && !manualPoint) body.put("expected_ozon_quote", quote)
+                        if (ozonApi && !manualPoint) body.put("expected_ozon_quote", currentQuote)
                     }
                     attemptKey = UUID.randomUUID().toString()
                     pendingPayload = body.toString()
@@ -504,7 +611,7 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
             } catch (e: ApiException) {
                 error = e.message
                 if (e.details.optString("reason") == "ozon_quote_changed") {
-                    quote = e.details.optJSONObject("quote"); clearAttempt()
+                    quote = e.details.optJSONObject("quote"); quotedFor = quoteKey; clearAttempt()
                     info = "Стоимость доставки обновлена. Проверьте сумму перед повторным подтверждением."
                 } else if (e.status in listOf(400, 401, 403) || e.details.optString("reason") == "checkout_attempt_finished") {
                     order = e.details.optJSONObject("order"); clearAttempt()
@@ -513,7 +620,7 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
             finally { busy = false }
         }
     }
-    Page("Оформление заказа", "Оплата через Т-Банк", onBack) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (error.isNotBlank()) ErrorMessage(error)
         if (info.isNotBlank()) Text(info)
         if (locked) {
@@ -542,63 +649,50 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
                 }, enabled = !busy) { Text("Проверить оплату") }
                 if (paymentUrl.isBlank()) OutlinedButton(::submit, enabled = !busy) { Text("Повторить запрос с тем же ключом") }
             }
-            return@Page
+            return@Column
         }
         if (order != null) SectionCard("Результат заказа") { StoreOrderSummary(order!!) }
         if (order?.optString("status") in setOf("paid", "ready")) {
-            Button(onBack) { Text("Вернуться в корзину") }; return@Page
+            Button(onBack) { Text("Обновить корзину") }; return@Column
         }
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), enabled = !busy, label = { Text("ФИО") }, singleLine = true)
         OutlinedTextField(phone, { phone = it; quote = null }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("Телефон") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
-        if (hasDigital) OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), enabled = !busy,
-            label = { Text("E-mail для электронной книги") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true)
         if (allDigital) Text("Электронная доставка: бесплатно")
-        else SectionCard("Доставка") {
-            catalog.items("delivery_methods").forEach { delivery ->
-                val code = delivery.optString("code")
-                Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { method = code; quote = null }, verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(method == code, { method = code; quote = null }, enabled = !busy)
-                    Text(delivery.optString("title"))
-                }
-            }
+        else Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            SiteSelect("Способ доставки", method, catalog.items("delivery_methods").map { it.optString("code") to it.optString("title") },
+                { method = it; quote = null }, enabled = !busy)
             if (method == "ozon") {
-                StoreCheck("Ввести адрес ПВЗ вручную", manualPoint, !busy) { manualPoint = it; point = null; quote = null }
-                if (!manualPoint) {
-                    OutlinedTextField(pointQuery, { pointQuery = it }, Modifier.fillMaxWidth(), enabled = !busy,
-                        label = { Text("Город, улица или номер ПВЗ") }, singleLine = true)
-                    OutlinedButton({
-                        busy = true; error = ""
-                        scope.launch {
-                            try { points = api.get("/api/store/ozon-delivery/points?q=${URLEncoder.encode(pointQuery.trim(), "UTF-8")}&limit=30").items("items") }
-                            catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
-                        }
-                    }, enabled = !busy && pointQuery.trim().length >= 2) { Text("Найти пункты выдачи") }
-                    points.forEach { candidate ->
-                        val selected = point?.optLong("delivery_point_id") == candidate.optLong("delivery_point_id")
-                        OutlinedButton({ point = candidate; quote = null; points = emptyList() }, Modifier.fillMaxWidth(), enabled = !busy) {
-                            Text((if (selected) "✓ " else "") + candidate.optString("name") + "\n" + candidate.optString("full_address"))
-                        }
+                Text("Пункт выдачи Ozon", style = MaterialTheme.typography.labelMedium)
+                Button({ showPointPicker = true }, Modifier.fillMaxWidth().testTag("ozonChoosePoint"), enabled = !busy) {
+                    Text(if (point != null) "Выбрать другой ПВЗ" else "Выбрать ПВЗ")
+                }
+                if (point != null) {
+                    Text(OzonDelivery.pointName(point!!), style = MaterialTheme.typography.titleSmall)
+                    Text("Выбран ПВЗ: ${point!!.optString("full_address")}")
+                }
+                if (pointId > 0) {
+                    if (deliveryDays > 0) Text("Примерный срок доставки: ${OzonDelivery.daysText(deliveryDays)}", Modifier.testTag("ozonDeliveryEstimate"))
+                    else if (estimateLoading) Text("Ozon рассчитывает срок доставки…")
+                    if (deliveryLoading) Text("Ozon рассчитывает стоимость доставки…")
+                    if (currentQuote != null) {
+                        Text("Доставка: ${money(currentQuote.optLong("price_kopecks"))}")
+                        if (currentQuote.optLong("insurance_cost_kopecks") > 0) Text("Включая страховку ${money(currentQuote.optLong("insurance_cost_kopecks"))}", style = MaterialTheme.typography.bodySmall)
                     }
-                    if (point != null) {
-                        Text("Выбран ПВЗ: ${point!!.optString("full_address")}")
-                        if (ozonApi) OutlinedButton({
-                            busy = true; error = ""
-                            scope.launch {
-                                try {
-                                    quote = api.post("/api/store/ozon-delivery/quote", cartRequest(rows)
-                                        .put("delivery_point_id", point!!.optLong("delivery_point_id")).put("phone", phone)).optJSONObject("quote")
-                                } catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
-                            }
-                        }, enabled = !busy && phone.filter(Char::isDigit).length >= 7) { Text("Рассчитать доставку") }
-                    }
-                    if (quote != null) Text("Доставка: ${money(quote!!.optLong("price_kopecks"))} · примерный срок ${quote!!.optInt("estimated_delivery_days")} дн.")
+                    if (ozonApi && quoteKey.isBlank()) Text("Укажите телефон перед расчётом стоимости доставки Ozon.", style = MaterialTheme.typography.bodySmall)
+                    if (deliveryError.isNotBlank()) ErrorMessage(deliveryError)
+                    if (estimateError.isNotBlank() && deliveryDays <= 0) ErrorMessage(estimateError)
+                    if (deliveryError.isNotBlank() || (estimateError.isNotBlank() && deliveryDays <= 0))
+                        OutlinedButton({ deliveryAttempt++ }, enabled = !busy && !deliveryLoading && !estimateLoading) { Text("Повторить расчёт доставки") }
+                } else if (manualPoint) {
+                    Text("Стоимость доставки — по тарифу магазина. Ozon не предоставляет срок для ПВЗ, введённого вручную.", style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (method.isNotBlank() && (method != "ozon" || manualPoint)) OutlinedTextField(address, { address = it }, Modifier.fillMaxWidth(), enabled = !busy,
-                label = { Text(if (manualPoint && method == "ozon") "Полный адрес ПВЗ Ozon" else "Адрес доставки") }, minLines = 2)
+            if (method.isNotBlank() && method != "ozon") OutlinedTextField(address, { address = it }, Modifier.fillMaxWidth(), enabled = !busy,
+                label = { Text("Адрес пункта выдачи заказов") }, minLines = 3)
         }
-        if (rewards > 0 && rewardRules?.optInt("is_active") == 1) StoreCheck("Использовать колбаски (доступно ${money(rewards)})", useRewards, !busy) { useRewards = it }
+        if (hasDigital) OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), enabled = !busy,
+            label = { Text("E-mail для доставки цифровых товаров") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true)
         SectionCard("Сумма заказа") {
             rows.forEach { Text("${it.optString("title")} × ${it.optInt("quantity", 1)} · ${money(it.optLong("price_kopecks") * it.optInt("quantity", 1))}") }
             Text("Товары: ${money(total)}")
@@ -614,11 +708,12 @@ private fun CheckoutScreen(api: ApiClient, cart: JSONObject, catalog: JSONObject
         StoreCheck("Согласен на обработку персональных данных для доставки", privacy, !busy) { privacy = it }
         TextButton({ openLink(context, api.baseUrl + "/android/privacy") }) { Text("Политика конфиденциальности") }
         StoreCheck("Мне исполнилось 18 лет", adult, !busy) { adult = it }
-        val deliveryReady = allDigital || (method.isNotBlank() && if (method == "ozon" && !manualPoint) point != null && (!ozonApi || quote != null) else address.trim().length >= 5)
+        if (rewards > 0 && rewardRules?.optInt("is_active") == 1) StoreCheck("Списать колбаски (доступно ${money(rewards)})", useRewards, !busy) { useRewards = it }
+        val deliveryReady = allDigital || (method.isNotBlank() && if (method == "ozon" && !manualPoint) pointId > 0 && (!ozonApi || currentQuote != null) else address.trim().length >= 5)
         val ready = name.trim().length >= 3 && phone.filter(Char::isDigit).length >= 7 && deliveryReady &&
             (!hasDigital || android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) && offer && privacy && adult && total - spent >= minimumOrder
-        Button(::submit, Modifier.fillMaxWidth(), enabled = !busy && ready && catalog.optJSONObject("payments")?.optBoolean("enabled") == true) {
-            Text(if (busy) "Создаём заказ…" else "Подтвердить заказ")
+        Button(::submit, Modifier.fillMaxWidth(), enabled = !busy && !cartUpdating && ready && catalog.optJSONObject("payments")?.optBoolean("enabled") == true) {
+            Text(if (busy) "Создаём заказ…" else "Оформить заказ")
         }
         if (catalog.optJSONObject("payments")?.optBoolean("enabled") != true) Text("Оплата сейчас недоступна. Попробуйте позже.")
     }

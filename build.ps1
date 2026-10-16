@@ -26,7 +26,7 @@ try {
             if (-not (Test-Path -LiteralPath $signingPath -PathType Leaf)) {
                 throw 'Создайте внешний signing.properties для ключа Колбабота. См. RELEASE.md; пароли не передавайте в аргументах команды.'
             }
-            $tasks = @(':app:bundleGoogleRelease', ':app:assembleRustoreRelease', ':app:assembleHuaweiRelease',
+            $tasks = @(':app:assembleGoogleRelease', ':app:bundleGoogleRelease', ':app:assembleRustoreRelease', ':app:assembleHuaweiRelease',
                 ':app:lintGoogleRelease', ':app:lintRustoreRelease', ':app:lintHuaweiRelease')
         } else {
             $tasks = @(':app:assembleGoogleDebug')

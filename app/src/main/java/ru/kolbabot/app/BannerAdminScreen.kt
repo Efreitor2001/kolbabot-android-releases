@@ -4,12 +4,17 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -159,7 +164,7 @@ fun AdminBannersScreen(api: ApiClient, onBack: (() -> Unit)? = null) {
                             Text("${index + 1}. ${item.optString("title").ifBlank { "Новый баннер" }}", style = MaterialTheme.typography.titleMedium)
                             Text(bannerKinds[item.optString("kind")] ?: item.optString("kind"), style = MaterialTheme.typography.labelSmall)
                         }
-                        Switch(checked = item.optBoolean("is_active", true), enabled = !busy, onCheckedChange = { edit(id, "is_active", it) })
+                        Checkbox(checked = item.optBoolean("is_active", true), enabled = !busy, onCheckedChange = { edit(id, "is_active", it) })
                     }
                     Text(if (item.optBoolean("is_active", true)) "Включён" else "Скрыт", style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -181,12 +186,17 @@ fun AdminBannersScreen(api: ApiClient, onBack: (() -> Unit)? = null) {
                         OutlinedTextField(item.optString("link_text"), { if (it.length <= 80) edit(id, "link_text", it) }, label = { Text("Текст кнопки") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                         Text("Автоподстановка из настроек акций: {standard_percent}, {premium_percent}, {max_redemption_percent}, {referral_percent}, {referral_max_sausages}, {review_bonus_sausages}, {review_min_chars}.", style = MaterialTheme.typography.bodySmall)
                         Text("Предпросмотр", style = MaterialTheme.typography.titleSmall)
-                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (item.optString("image_url").isNotBlank()) NetworkImage(runCatching { URI(api.baseUrl).resolve(item.optString("image_url")).toString() }.getOrDefault(""), item.optString("title"), Modifier.fillMaxWidth().height(180.dp))
+                        // Keep .admin-banner-preview's green/amber treatment from styles.css.
+                        Surface(color = Color.Transparent, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.background(Brush.linearGradient(listOf(
+                                SiteColors.Accent.copy(alpha = 0.13f), Color(0xFFFFB74D).copy(alpha = 0.14f))))
+                                .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (item.optString("image_url").isNotBlank()) NetworkImage(runCatching { URI(api.baseUrl).resolve(item.optString("image_url")).toString() }.getOrDefault(""), item.optString("title"),
+                                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp)))
                                 Text(item.optString("title"), style = MaterialTheme.typography.titleLarge)
                                 Text(item.optString("text"))
-                                if (item.optString("link_url").isNotBlank()) Text(item.optString("link_text").ifBlank { "Подробнее" } + " →", style = MaterialTheme.typography.labelLarge)
+                                if (item.optString("link_url").isNotBlank()) Text(item.optString("link_text").ifBlank { "Подробнее" } + " →",
+                                    style = MaterialTheme.typography.labelLarge, color = SiteColors.Accent)
                             }
                         }
                         Text("В опубликованном баннере значения в фигурных скобках заменятся актуальными настройками акции.", style = MaterialTheme.typography.bodySmall)

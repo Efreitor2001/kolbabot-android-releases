@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Колбабот · Вход</title>
+  <meta name="description" content="Вход и регистрация в сервисе Колбабот. Калькуляции, рецептуры и справочник. Связь: obolo4ki@kolbabot.ru">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="canonical" href="https://kolbabot.ru/auth">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Roboto:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=20260825-user-system-4">
+  <style>
+    .auth-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .auth-card {
+      width: min(520px, 100%);
+    }
+    .auth-switch {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 14px;
+    }
+    .auth-switch .chip.is-active {
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      color: #fff;
+    }
+    .auth-oauth-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto 14px;
+    }
+    .auth-oauth-stack.hidden {
+      display: none;
+    }
+    .auth-oauth-consents {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+    .auth-consent-row {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      margin: 0;
+      cursor: pointer;
+    }
+    .auth-consent-row input[type="checkbox"] {
+      flex: 0 0 22px;
+      width: 22px;
+      height: 22px;
+      margin: 2px 0 0;
+      accent-color: var(--brand);
+    }
+    .auth-consent-row span {
+      flex: 1;
+      min-width: 0;
+      text-align: left;
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 500;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--text, #1b1b1f);
+    }
+    .auth-oauth-buttons {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      width: 100%;
+    }
+    .auth-oauth-google,
+    .auth-oauth-vk {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    #vkIdProviders {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vk-id-provider {
+      width: 100%;
+      min-height: 44px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .vk-id-provider > *,
+    #vkIdProviders .VkIdSdk_oauth_container {
+      width: 100% !important;
+    }
+    #vkIdProviders .VkIdSdk_oauth_link_text {
+      display: none !important;
+    }
+    .auth-google-wrap {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+    .auth-google-wrap.hidden,
+    .auth-oauth-vk.hidden {
+      display: none;
+    }
+    /* Official Google Sign-In button (branding guidelines) */
+    .gsi-material-button {
+      -moz-user-select: none;
+      -webkit-user-select: none;
+      -ms-user-select: none;
+      -webkit-appearance: none;
+      appearance: none;
+      background-color: #fff;
+      background-image: none;
+      border: 1px solid #747775;
+      border-radius: 4px;
+      box-sizing: border-box;
+      color: #1f1f1f;
+      cursor: pointer;
+      font-family: "Roboto", arial, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      height: 40px;
+      letter-spacing: 0.25px;
+      outline: none;
+      overflow: hidden;
+      padding: 0;
+      position: relative;
+      text-align: center;
+      transition: background-color 0.218s, border-color 0.218s, box-shadow 0.218s;
+      vertical-align: middle;
+      white-space: nowrap;
+      width: 100%;
+      max-width: 400px;
+      display: block;
+    }
+    .gsi-material-button:disabled {
+      cursor: default;
+      opacity: 0.38;
+    }
+    .gsi-material-button:not(:disabled):hover {
+      box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    }
+    .gsi-material-button:not(:disabled):active .gsi-material-button-state,
+    .gsi-material-button:not(:disabled):focus .gsi-material-button-state {
+      background-color: #303030;
+      opacity: 0.12;
+    }
+    .gsi-material-button .gsi-material-button-state {
+      bottom: 0;
+      left: 0;
+      opacity: 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+    }
+    .gsi-material-button .gsi-material-button-content-wrapper {
+      align-items: center;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      height: 100%;
+      justify-content: center;
+      position: relative;
+      width: 100%;
+      padding: 0 12px;
+      box-sizing: border-box;
+    }
+    .gsi-material-button .gsi-material-button-icon {
+      height: 20px;
+      margin-right: 12px;
+      min-width: 20px;
+      width: 20px;
+      flex-shrink: 0;
+    }
+    .gsi-material-button .gsi-material-button-icon svg {
+      display: block;
+      height: 20px;
+      width: 20px;
+    }
+    .gsi-material-button .gsi-material-button-contents {
+      flex-grow: 0;
+      font-family: "Roboto", arial, sans-serif;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: top;
+    }
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      color: var(--muted, #6b7280);
+      font-size: 13px;
+    }
+    .auth-divider.hidden {
+      display: none;
+    }
+    .auth-divider::before,
+    .auth-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+  </style>
+</head>
+<body class="auth-page">
+  <div class="bg-noise" aria-hidden="true"></div>
+  <main class="auth-shell">
+    <section class="auth-brand-panel" aria-labelledby="authBrandTitle">
+      <div class="auth-brand-panel__glow" aria-hidden="true"></div>
+      <a class="auth-brand-link" href="/" aria-label="На главную Колбабота">
+        <span class="auth-brand-mark" aria-hidden="true">К</span>
+        <span>Колбабот</span>
+      </a>
+      <div class="auth-brand-copy">
+        <p class="kicker">Ваш помощник технолога</p>
+        <h1 id="authBrandTitle">Домашнее производство — увереннее</h1>
+        <p>Рецептуры, точные расчёты, справочник и магазин собраны в одном спокойном рабочем пространстве.</p>
+        <ul class="auth-benefits">
+          <li><span aria-hidden="true">✓</span> Сохраняйте доступ и историю заказов</li>
+          <li><span aria-hidden="true">✓</span> Входите любым удобным способом</li>
+          <li><span aria-hidden="true">✓</span> Один кабинет для всех подключённых аккаунтов</li>
+        </ul>
+      </div>
+      <p class="auth-brand-footer">Без аватарок и лишней публичности — только данные, нужные для работы сервиса.</p>
+    </section>
+
+    <section class="auth-workspace" aria-labelledby="authTitle">
+    <article class="card auth-card">
+      <header class="auth-card-heading">
+        <a class="auth-mobile-brand" href="/" aria-label="На главную Колбабота">
+          <span aria-hidden="true">К</span>
+          Колбабот
+        </a>
+        <p id="authKicker" class="kicker">Личный кабинет</p>
+        <h2 id="authTitle">Добро пожаловать</h2>
+        <p id="authSubtitle" class="muted">Войдите удобным способом — ваши данные и заказы будут под рукой.</p>
+      </header>
+
+      <div class="auth-switch" role="tablist" aria-label="Способ авторизации">
+        <button type="button" class="chip is-active" data-auth-tab="login" role="tab" aria-selected="true">Вход</button>
+        <button type="button" class="chip" data-auth-tab="register" role="tab" aria-selected="false">Регистрация</button>
+        <button type="button" class="chip" data-auth-tab="reset" role="tab" aria-selected="false">Восстановление</button>
+      </div>
+
+      <div class="auth-oauth-stack hidden" id="loginOAuthWrap">
+        <div class="auth-section-heading">
+          <strong>Быстрый вход</strong>
+          <span>Google, VK ID, Mail.ru или Одноклассники</span>
+        </div>
+        <div class="auth-oauth-consents">
+          <label class="auth-consent-row" id="oauthPdConsentWrap">
+            <input id="oauthPdConsent" name="oauth_pd_consent" type="checkbox" value="1">
+            <span>Я принимаю <a href="/privacy-policy" target="_blank" rel="noopener">согласие на обработку персональных данных</a> и разрешаю получить ФИО, email, телефон и источник входа из выбранного аккаунта</span>
+          </label>
+          <label class="auth-consent-row" id="oauthCookieConsentWrap">
+            <input id="oauthCookieConsent" name="oauth_cookie_consent" type="checkbox" value="1">
+            <span>Я принимаю <a href="/cookie-policy" target="_blank" rel="noopener">политику использования cookie</a></span>
+          </label>
+          <label class="auth-consent-row" id="oauthAgeConsentWrap">
+            <input id="oauthAgeConsent" name="oauth_age_consent" type="checkbox" value="1">
+            <span>Мне исполнилось 18 лет</span>
+          </label>
+        </div>
+        <div class="auth-oauth-buttons">
+          <div class="auth-oauth-google auth-google-wrap hidden" id="loginGoogleWrap">
+            <button type="button" class="gsi-material-button" id="loginGoogleBtn" aria-label="Войти через Google">
+              <div class="gsi-material-button-state"></div>
+              <div class="gsi-material-button-content-wrapper">
+                <div class="gsi-material-button-icon">
+                  <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" aria-hidden="true">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.56 2.95-2.24 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    <path fill="none" d="M0 0h48v48H0z"></path>
+                  </svg>
+                </div>
+                <span class="gsi-material-button-contents">Войти через Google</span>
+              </div>
+            </button>
+          </div>
+          <div class="auth-oauth-vk hidden" id="loginVkWrap">
+            <div id="vkIdProviders" aria-label="Вход через VK ID, Mail.ru или Одноклассники">
+              <div class="vk-id-provider" id="vkIdProviderVk"></div>
+              <div class="vk-id-provider" id="vkIdProviderMail"></div>
+              <div class="vk-id-provider" id="vkIdProviderOk"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="auth-divider hidden" id="loginOAuthDivider">или по логину и паролю</div>
+
+      <form id="loginForm" class="auth-form">
+        <label class="field">
+          <span>Логин</span>
+          <input name="username" type="text" autocomplete="username" minlength="3" maxlength="32" placeholder="Ваш логин" required>
+        </label>
+        <label class="field">
+          <span>Пароль</span>
+          <input name="password" type="password" autocomplete="current-password" minlength="6" placeholder="Введите пароль" required>
+        </label>
+        <label class="field hidden" id="loginTwoFaWrap">
+          <span>Код 2FA</span>
+          <input name="totp_code" type="text" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="123456">
+        </label>
+        <button type="submit">Войти</button>
+      </form>
+
+      <form id="registerForm" class="auth-form auth-form--register hidden">
+        <label class="field">
+          <span>Логин</span>
+          <input name="username" type="text" autocomplete="username" minlength="3" maxlength="32" placeholder="Как к вам обращаться" required>
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input name="email" type="email" autocomplete="email" placeholder="name@example.ru" required>
+        </label>
+        <label class="field">
+          <span>Пароль</span>
+          <input name="password" type="password" autocomplete="new-password" minlength="6" placeholder="Не менее 6 символов" required>
+        </label>
+        <label class="field">
+          <span>Повторите пароль</span>
+          <input name="confirm_password" type="password" autocomplete="new-password" minlength="6" placeholder="Введите пароль ещё раз" required>
+        </label>
+        <label class="field hidden" id="registerCodeWrap">
+          <span>Код подтверждения из email</span>
+          <input name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="123456">
+        </label>
+        <div class="auth-oauth-consents">
+          <label class="auth-consent-row" id="registerPdConsentWrap">
+            <input name="pd_consent" type="checkbox" value="1" required>
+            <span>Я принимаю <a href="/privacy-policy" target="_blank" rel="noopener">согласие на обработку персональных данных</a></span>
+          </label>
+          <label class="auth-consent-row" id="registerCookieConsentWrap">
+            <input name="cookie_consent" type="checkbox" value="1" required>
+            <span>Я принимаю <a href="/cookie-policy" target="_blank" rel="noopener">политику использования cookie</a></span>
+          </label>
+          <label class="auth-consent-row" id="registerAgeConsentWrap">
+            <input name="age_consent" type="checkbox" value="1" required>
+            <span>Мне исполнилось 18 лет</span>
+          </label>
+        </div>
+        <button type="submit" id="registerSubmitBtn">Отправить код</button>
+      </form>
+
+      <form id="resetForm" class="auth-form hidden">
+        <label class="field">
+          <span>Email</span>
+          <input name="email" type="email" autocomplete="email" placeholder="name@example.ru" required>
+        </label>
+        <label class="field hidden" id="resetCodeWrap">
+          <span>Код из email</span>
+          <input name="code" type="text" inputmode="numeric" pattern="[0-9]{8}" minlength="8" maxlength="8" placeholder="12345678">
+        </label>
+        <label class="field hidden" id="resetPasswordWrap">
+          <span>Новый пароль</span>
+          <input name="new_password" type="password" autocomplete="new-password" minlength="10">
+        </label>
+        <label class="field hidden" id="resetConfirmPasswordWrap">
+          <span>Повторите новый пароль</span>
+          <input name="confirm_new_password" type="password" autocomplete="new-password" minlength="10">
+        </label>
+        <button type="submit" id="resetSubmitBtn">Отправить код сброса</button>
+      </form>
+
+      <p id="authResult" class="auth-result muted" aria-live="polite">После входа откроется основной сайт.</p>
+      <footer class="auth-card-footer">
+        <a href="/privacy-policy" target="_blank" rel="noopener">Персональные данные</a>
+        <span aria-hidden="true">·</span>
+        <a href="/cookie-policy" target="_blank" rel="noopener">Cookie</a>
+        <span aria-hidden="true">·</span>
+        <a href="/">Вернуться на сайт</a>
+      </footer>
+    </article>
+    </section>
+  </main>
+
+  <div id="cookieNoticeBar" class="cookie-notice hidden" role="dialog" aria-label="Уведомление о cookie">
+    <div class="cookie-notice__inner">
+      <p>Мы используем cookie и похожие технологии для работы сайта и входа. Подробнее — в <a href="/cookie-policy" target="_blank" rel="noopener">политике cookie</a>. Нажимая «Принимаю», вы соглашаетесь с их использованием.</p>
+      <button type="button" id="cookieNoticeAccept" class="chip">Принимаю</button>
+    </div>
+  </div>
+
+  <script type="module" src="/auth.js?v=20260929-oauth-retry-2"></script>
+</body>
+</html>

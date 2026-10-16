@@ -2,18 +2,26 @@ package ru.kolbabot.app
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 @Composable fun AdminScreen(api: ApiClient, onBack: () -> Unit) {
+    CompositionLocalProvider(LocalSiteAdmin provides true) {
+        AdminAccountScreen(api, onBack)
+    }
+}
+
+@Composable private fun AdminAccountScreen(api: ApiClient, onBack: () -> Unit) {
     val enteredUserId = rememberSaveable { api.userId }
     val identity = rememberVerifiedAccount(api, enteredUserId)
     val canAdmin = identity.isAdmin(api, enteredUserId)
@@ -34,67 +42,37 @@ import org.json.JSONObject
 }
 
 @Composable private fun AuthorizedAdminScreen(api: ApiClient, user: JSONObject, onBack: () -> Unit) {
-    var section by rememberSaveable { mutableStateOf("") }
+    var section by rememberSaveable { mutableStateOf("dashboard") }
     val holder = rememberSaveableStateHolder()
-    val back = { section = "" }
-    BackHandler(section.isNotBlank()) { back() }
-    holder.SaveableStateProvider(section) {
+    val back = { section = "dashboard" }
+    BackHandler(section != "dashboard") { back() }
+    val sections = listOf("dashboard" to "Дашборд", "catalog" to "Каталог", "handbook" to "Справочник",
+        "articles" to "Статьи", "recipes" to "Рецепты", "faq" to "FAQ", "equipment" to "Оборудование",
+        "store" to "Магазин", "carts" to "Корзины", "orders" to "Заказы", "reviews" to "Отзывы",
+        "support" to "Поддержка", "notifications" to "Оповещения", "users" to "Пользователи",
+        "db" to "БД", "security" to "Безопасность", "tools" to "Инструменты")
+    val siteChrome = LocalSiteChrome.current
+    var bootstrap by remember(api) { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(api) {
+        try { bootstrap = api.get("/api/bootstrap") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* Counts remain unavailable; section requests report their own failures. */ }
+    }
+    val chrome: @Composable () -> Unit = { AdminChrome(user, bootstrap, siteChrome, section, sections) { section = it } }
+    CompositionLocalProvider(LocalAdminChrome provides chrome) {
+        holder.SaveableStateProvider(section) {
         when (section) {
-            "orders" -> AdminOrdersScreen(api, back)
+            "orders" -> Column { TextButton(onClick = { section = "digital" }) { Text("Электронные книги") }; Box(Modifier.weight(1f)) { AdminOrdersScreen(api, back) } }
             "banners" -> AdminBannersScreen(api, back)
             "catalog", "handbook", "articles", "recipes", "faq", "equipment" -> AdminContentScreen(api, section, back)
             "users", "support", "notifications" -> AdminPeopleScreen(api, section, back)
-            "dashboard", "security", "db", "tools" -> AdminToolsScreen(api, section, back)
+            "dashboard" -> AdminDashboardScreen(api, onBack, { section = it }, user.optString("username").ifBlank { user.optString("first_name", "администратор") })
+            "security", "db", "tools" -> AdminToolsScreen(api, section, back)
             "carts", "reviews", "digital" -> AdminCommerceScreen(api, section, back)
             "store" -> AdminStoreScreen(api, back) { section = it }
             "2fa" -> AdminTwoFactorSetup(api, back)
-            else -> Page("Админ-редактор", onBack = onBack) {
-                    if (!user.optBoolean("admin_2fa_enabled")) SectionCard("Защита администратора") {
-                        Text("Для доступа к административным действиям подключите приложение с одноразовыми кодами.")
-                        Button(onClick = { section = "2fa" }) { Text("Настроить двухфакторный вход") }
-                    }
-                    Text("Те же данные и права доступа, что в админке сайта.")
-                    val sections = listOf(
-                        Triple("dashboard", "Обзор", "Продажи, пользователи и события"),
-                        Triple("orders", "Заказы", "Статусы, возвраты и копирование данных"),
-                        Triple("store", "Магазин", "Товары, варианты, категории, доставка и акции"),
-                        Triple("banners", "Баннеры", "Общая карусель сайта и приложения"),
-                        Triple("digital", "Электронные книги", "Файлы, версии и отправка покупателям"),
-                        Triple("carts", "Корзины", "Собранные корзины покупателей"),
-                        Triple("reviews", "Отзывы", "Оценки и модерация"),
-                        Triple("catalog", "Категории и сорта", "Каталог рецептов"),
-                        Triple("recipes", "Рецепты", "Состав, варианты ингредиентов, текст и фото"),
-                        Triple("handbook", "Справочник", "Разделы и материалы"),
-                        Triple("articles", "Статьи", "Публикации, изображения и комментарии"),
-                        Triple("faq", "Частые вопросы", "Вопросы и ответы"),
-                        Triple("equipment", "Оборудование", "Карточки и фотографии"),
-                        Triple("support", "Поддержка", "Обращения и ответы"),
-                        Triple("notifications", "Оповещения", "Общие и личные сообщения"),
-                        Triple("users", "Пользователи", "Профили, доступ, бонусы и безопасность"),
-                        Triple("db", "Журнал базы данных", "События и действия"),
-                        Triple("security", "Безопасность", "Журнал безопасности"),
-                        Triple("tools", "Инструменты и настройки", "Аналитика, тарифы, оформление, импорт и обслуживание")
-                    )
-                    val groups = listOf(
-                        "Продажи и магазин" to setOf("dashboard", "orders", "store", "banners", "digital", "carts", "reviews"),
-                        "Материалы" to setOf("catalog", "recipes", "handbook", "articles", "faq", "equipment"),
-                        "Общение и пользователи" to setOf("support", "notifications", "users"),
-                        "Управление" to setOf("db", "security", "tools")
-                    )
-                    groups.forEach { (group, keys) -> SectionCard(group) {
-                        sections.filter { it.first in keys }.forEach { (key, title, description) ->
-                            OutlinedCard(onClick = { section = key }, modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(title, style = MaterialTheme.typography.titleMedium)
-                                        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    } }
-            }
+            else -> AdminToolsScreen(api, "dashboard", onBack)
+        }
         }
     }
 }
