@@ -1,0 +1,11 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+**/build/
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+app/agconnect-services.json
+captures/
