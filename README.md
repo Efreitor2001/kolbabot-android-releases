@@ -19,7 +19,7 @@ Android 8.0 и новее. Интерфейс на русском языке. Д
 
 ## Сборка
 
-В Android Studio откройте каталог `KolbaBot`, содержащий `settings.gradle.kts`. Требуются JDK 21, Android SDK Platform `android-37.0`; AGP/Gradle зафиксированы в проекте.
+В Android Studio откройте каталог `KolbaBot`, содержащий `settings.gradle.kts`. Требуется Android SDK Platform `android-37.0`; AGP/Gradle зафиксированы в проекте. Версию JDK для Gradle задаёт `gradle/gradle-daemon-jvm.properties` (в текущей локальной настройке — 25); без этого файла скрипт предпочитает JDK 21.
 
 ```powershell
 .\build.ps1 -Check
@@ -27,7 +27,13 @@ Android 8.0 и новее. Интерфейс на русском языке. Д
 .\build.ps1 -Release
 ```
 
-Первая команда собирает debug APK, запускает JVM-тесты и lint. Вторая дополнительно выполняет UI-тесты на запущенном эмуляторе/телефоне. Релизная команда создаёт Google APK/AAB и универсальные RuStore/Huawei APK. Ключи остаются во внешнем `%LOCALAPPDATA%\KolbaBot\signing\signing.properties`; отсутствие ключа завершает релизную сборку ошибкой. Firebase использует публичный `google-services.json`; локальный Huawei `agconnect-services.json` исключён из Git, в APK попадает только разрешённая публичная конфигурация.
+Первая команда собирает debug APK, запускает JVM-тесты и lint. Вторая дополнительно выполняет UI-тесты на запущенном эмуляторе/телефоне. Релизная команда создаёт Google APK/AAB и универсальные RuStore/Huawei APK. Настройки подписи читаются из внешнего файла `%USERPROFILE%\.config\KolbaBot\signing\signing.properties`; отсутствие ключа завершает релизную сборку ошибкой. Firebase использует публичный `google-services.json`; локальный Huawei `agconnect-services.json` исключён из Git, в APK попадает только разрешённая публичная конфигурация.
+
+`signing.properties` — файл настроек подписи. Сам ключ находится в файле `.jks`, путь к которому указан в свойстве `storeFile`. Команда `./build.ps1 -Release` читает эти настройки автоматически. В мастере Android Studio **Generate Signed App Bundle or APK** в поле **Key store path** укажите полный путь к `.jks`, а в **Key alias** — значение `keyAlias` из настроек. Для текущей локальной установки это `C:\Users\Efreitor2001\.config\KolbaBot\signing\kolbabot-release.jks` и alias `kolbabot`. Пароли берутся из локального файла настроек; новый ключ для обновления приложения создавать не нужно.
+
+В PowerShell открыть папку подписи можно командой `explorer.exe "$env:USERPROFILE\.config\KolbaBot\signing"`. В поле пути мастера Android Studio используйте полный путь. Каталог `.config` доступен и обычным приложениям Windows, и средам со служебным перенаправлением `AppData`. Для существующих установок сохранено чтение прежнего `%LOCALAPPDATA%/KolbaBot/signing/signing.properties`, если нового файла нет. Переменная `KOLBABOT_SIGNING_PROPERTIES` имеет приоритет над обоими путями.
+
+Скрипт совместим с Windows PowerShell 5.1 и PowerShell 7; сохраняйте `build.ps1` в UTF-8 с BOM. Если `JAVA_HOME` не задан, скрипт ищет JDK в установленных рядом версиях Android Studio и предпочитает версию из `gradle/gradle-daemon-jvm.properties`, когда этот файл существует.
 
 По умолчанию приложение работает с `https://kolbabot.ru`. Тестовый HTTPS сервер: `-PKOLBABOT_BASE_URL=https://test.example.org`. Проект использует существующий API сайта; изменения серверной части для сборки не требуются.
 

@@ -1,11 +1,28 @@
+﻿# Keep UTF-8 with BOM so Windows PowerShell 5.1 reads Russian messages correctly.
 param([switch]$Check, [switch]$DeviceTests, [switch]$Release)
 $ErrorActionPreference = 'Stop'
 $previousJava = $env:JAVA_HOME
 $previousTools = $env:JAVA_TOOL_OPTIONS
 try {
     if (-not $env:JAVA_HOME) {
-        $bundledJava = Join-Path $env:ProgramFiles 'Android\Android Studio\jbr'
-        if (-not (Test-Path -LiteralPath (Join-Path $bundledJava 'bin\java.exe'))) { throw 'Установите Android Studio или задайте JAVA_HOME на JDK 21.' }
+        $requiredJavaVersion = '21'
+        $daemonJvmFile = Join-Path $PSScriptRoot 'gradle\gradle-daemon-jvm.properties'
+        if (Test-Path -LiteralPath $daemonJvmFile) {
+            $versionSetting = Select-String -LiteralPath $daemonJvmFile -Pattern '^toolchainVersion\s*=\s*(\d+)\s*$' | Select-Object -First 1
+            if ($versionSetting) { $requiredJavaVersion = $versionSetting.Matches[0].Groups[1].Value }
+        }
+        # Android Studio can be installed side by side (for example, Android Studio1).
+        # Prefer its installed JDK matching Gradle's daemon criteria over a download.
+        $bundledJavas = @(Get-ChildItem -Path (Join-Path $env:ProgramFiles 'Android\Android Studio*') -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'jbr' } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_ 'bin\java.exe') })
+        $bundledJava = $bundledJavas | Where-Object {
+            $releaseFile = Join-Path $_ 'release'
+            (Test-Path -LiteralPath $releaseFile) -and
+                (Select-String -LiteralPath $releaseFile -Pattern ('^JAVA_VERSION="' + $requiredJavaVersion + '(\.|"|-)') -Quiet)
+        } | Select-Object -First 1
+        if (-not $bundledJava) { $bundledJava = $bundledJavas | Select-Object -First 1 }
+        if (-not $bundledJava) { throw "Установите Android Studio или задайте JAVA_HOME на JDK $requiredJavaVersion." }
         $env:JAVA_HOME = $bundledJava
     }
     # Some Windows network filters break AF_UNIX connect in JBR. A deliberately
@@ -22,7 +39,12 @@ try {
             [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'local.properties'), 'sdk.dir=' + $escapedSdk)
         }
         if ($Release) {
-            $signingPath = if ($env:KOLBABOT_SIGNING_PROPERTIES) { $env:KOLBABOT_SIGNING_PROPERTIES } else { Join-Path $env:LOCALAPPDATA 'KolbaBot\signing\signing.properties' }
+            $homeSigningPath = Join-Path $env:USERPROFILE '.config\KolbaBot\signing\signing.properties'
+            $legacySigningPath = Join-Path $env:LOCALAPPDATA 'KolbaBot\signing\signing.properties'
+            $signingPath = if ($env:KOLBABOT_SIGNING_PROPERTIES) { $env:KOLBABOT_SIGNING_PROPERTIES }
+                elseif (Test-Path -LiteralPath $homeSigningPath -PathType Leaf) { $homeSigningPath }
+                elseif (Test-Path -LiteralPath $legacySigningPath -PathType Leaf) { $legacySigningPath }
+                else { $homeSigningPath }
             if (-not (Test-Path -LiteralPath $signingPath -PathType Leaf)) {
                 throw 'Создайте внешний signing.properties для ключа Колбабота. См. RELEASE.md; пароли не передавайте в аргументах команды.'
             }

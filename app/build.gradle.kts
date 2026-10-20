@@ -66,9 +66,13 @@ if (hasFirebaseConfiguration) apply(plugin = "com.google.gms.google-services")
 
 // Release keys belong to this application and stay outside the source checkout.
 // A missing/incomplete configuration never falls back to the debug signing key.
-val defaultSigningPath = providers.environmentVariable("LOCALAPPDATA").orNull
+// AppData may be redirected for packaged Windows apps. A home-directory path
+// is shared by Android Studio, ordinary PowerShell and packaged build tools.
+val homeSigningPath = "${System.getProperty("user.home")}/.config/KolbaBot/signing/signing.properties"
+val legacySigningPath = providers.environmentVariable("LOCALAPPDATA").orNull
     ?.let { "$it/KolbaBot/signing/signing.properties" }
-    ?: "${System.getProperty("user.home")}/.config/KolbaBot/signing/signing.properties"
+val defaultSigningPath = if (!File(homeSigningPath).isFile && legacySigningPath != null && File(legacySigningPath).isFile)
+    legacySigningPath else homeSigningPath
 val signingPropertiesFile = file(providers.environmentVariable("KOLBABOT_SIGNING_PROPERTIES").orElse(defaultSigningPath).get()).canonicalFile
 val checkoutRoot = rootProject.projectDir.parentFile.takeIf { it.resolve(".git").exists() } ?: rootProject.projectDir
 require(!signingPropertiesFile.toPath().startsWith(checkoutRoot.canonicalFile.toPath())) {

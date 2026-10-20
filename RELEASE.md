@@ -8,7 +8,7 @@
 - Huawei APK: `app/build/outputs/apk/huawei/release/app-huawei-release.apk`.
 - R8 mapping: `app/build/outputs/mapping/<variant>/mapping.txt`.
 
-Сохраняйте прежний ключ подписи `ru.kolbabot.app`. Он читается из внешнего `%LOCALAPPDATA%/KolbaBot/signing/signing.properties`, либо пути `KOLBABOT_SIGNING_PROPERTIES`. Свойства: storeFile (абсолютный путь), storePassword, keyAlias, keyPassword. Секреты не передаются в CLI и не включаются в исходный ZIP.
+Сохраняйте прежний ключ подписи `ru.kolbabot.app`. Настройки читаются из внешнего `%USERPROFILE%/.config/KolbaBot/signing/signing.properties`, либо пути `KOLBABOT_SIGNING_PROPERTIES`. Свойства: storeFile (абсолютный путь к `.jks`), storePassword, keyAlias, keyPassword. В мастере Android Studio поле Key store path должно содержать путь из storeFile. Секреты не передаются в CLI и не включаются в исходный ZIP. Прежний `%LOCALAPPDATA%/KolbaBot/signing/signing.properties` используется как запасной путь, если нового файла нет; для новых настроек используется `.config`, чтобы избежать перенаправления AppData упакованными приложениями Windows.
 
 Оригинальный сертификат официальной APK: SHA-256 `366f244016a77d9e51edeede4ea5369b80a0ac474a7b359598d7d9485044912f`. Версия 1.0.1 была тестовой; этот выпуск повышает versionCode до 4 и использует исходный ключ. Проверяйте сертификат готовых APK командой `apksigner verify --print-certs`.
 
