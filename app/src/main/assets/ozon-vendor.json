@@ -1,0 +1,46 @@
+{
+  "description": "Pinned unmodified map runtime matching website static/ozon-pvz-map.js. Bundled locally for offline renderer startup; geographic PMTiles data still loads from server-configured HTTPS CDN.",
+  "vendored_on": "2026-10-16",
+  "files": [
+    {
+      "file": "ozon-maplibre.js",
+      "package": "maplibre-gl",
+      "version": "5.24.0",
+      "url": "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js",
+      "license": "BSD-3-Clause",
+      "license_file": "ozon-maplibre-LICENSE.txt",
+      "sha256": "45a9b07a9189ce56054c620a947ccf41e291e58c95e9b61533b740aaa65ee5cb",
+      "bytes": 1056837
+    },
+    {
+      "file": "ozon-maplibre.css",
+      "package": "maplibre-gl",
+      "version": "5.24.0",
+      "url": "https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css",
+      "license": "BSD-3-Clause",
+      "license_file": "ozon-maplibre-LICENSE.txt",
+      "sha256": "ab1e70d59ec40465bae7e7030da2f3ccf28133fd502e62bd598eefbadfd7a732",
+      "bytes": 70024
+    },
+    {
+      "file": "ozon-pmtiles.js",
+      "package": "pmtiles",
+      "version": "4.5.0",
+      "url": "https://cdn.jsdelivr.net/npm/pmtiles@4.5.0/dist/pmtiles.js",
+      "license": "BSD-3-Clause",
+      "license_file": "ozon-pmtiles-LICENSE.txt",
+      "sha256": "caf981bc46f6327ee7e65d5dc964d89d38a69f60edca2bd4c5c890c21b554c6c",
+      "bytes": 20229
+    },
+    {
+      "file": "ozon-basemaps.js",
+      "package": "@protomaps/basemaps",
+      "version": "5.7.2",
+      "url": "https://cdn.jsdelivr.net/npm/@protomaps/basemaps@5.7.2/dist/basemaps.js",
+      "license": "BSD-3-Clause",
+      "license_file": "ozon-basemaps-LICENSE.txt",
+      "sha256": "551864f01da1bfe3005e99987197f22f56d0c35f9a10fa1727a889e2434af16d",
+      "bytes": 38680
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "233804869362",
+    "project_id": "kolbabot-9591f",
+    "storage_bucket": "kolbabot-9591f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:233804869362:android:a4c31f6d17a90101d92a6b",
+        "android_client_info": {
+          "package_name": "ru.kolbabot.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcSAQeePqXOR8qbHNDf4c-Odas0lcOKy8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

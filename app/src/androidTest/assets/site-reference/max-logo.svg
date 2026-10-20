@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="maxLogoTitle">
+  <title id="maxLogoTitle">MAX</title>
+  <defs>
+    <linearGradient id="maxLogoGradient" x1="8" y1="18" x2="92" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#00bfff"/>
+      <stop offset="0.52" stop-color="#471aff"/>
+      <stop offset="1" stop-color="#9500ff"/>
+    </linearGradient>
+    <radialGradient id="maxLogoGlow" cx="0" cy="0" r="1" gradientTransform="translate(25 24) rotate(42) scale(60)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#72dcff" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#72dcff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path fill="url(#maxLogoGradient)" fill-rule="evenodd" d="M50.757.262c27.536 0 49.129 22.335 49.129 49.885 0 27.55-22.279 49.343-48.865 49.343-9.435 0-14.007-1.328-21.371-6.543a1.27 1.27 0 0 0-1.629.193c-5.664 6.043-20.171 10.286-20.835 2.036C7.186 80.79 0 71.447 0 49.876 0 21.555 23.221.262 50.757.262Zm.772 24.55c-13.065-.686-23.265 8.385-25.515 22.571-1.864 11.75 1.436 26.071 4.265 26.793 1.2.307 4.078-1.9 6.178-3.879a1.27 1.27 0 0 1 1.45-.15c3.272 2 6.972 3.5 11.05 3.715 13.414.7 25.3-9.8 26.007-23.215.7-13.414-10.022-25.143-23.435-25.843v.008Z"/>
+  <path fill="url(#maxLogoGlow)" fill-rule="evenodd" opacity="0.58" d="M50.757.262c27.536 0 49.129 22.335 49.129 49.885 0 27.55-22.279 49.343-48.865 49.343-9.435 0-14.007-1.328-21.371-6.543a1.27 1.27 0 0 0-1.629.193c-5.664 6.043-20.171 10.286-20.835 2.036C7.186 80.79 0 71.447 0 49.876 0 21.555 23.221.262 50.757.262Zm.772 24.55c-13.065-.686-23.265 8.385-25.515 22.571-1.864 11.75 1.436 26.071 4.265 26.793 1.2.307 4.078-1.9 6.178-3.879a1.27 1.27 0 0 1 1.45-.15c3.272 2 6.972 3.5 11.05 3.715 13.414.7 25.3-9.8 26.007-23.215.7-13.414-10.022-25.143-23.435-25.843v.008Z"/>
+</svg>

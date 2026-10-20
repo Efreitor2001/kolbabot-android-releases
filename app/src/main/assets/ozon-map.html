@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https:; img-src https: data: blob:; worker-src blob:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="/__native_ozon_map__/ozon-map.css">
+  <title>ПВЗ Ozon на карте</title>
+</head>
+<body>
+  <dialog id="ozonPvzDialog" open>
+    <section id="ozonPvzMapPanel" class="ozon-pvz-map-panel">
+      <div class="ozon-pvz-map-panel__head">
+        <div class="ozon-pvz-map-panel__title"><strong>ПВЗ на карте</strong><span>Выберите Ваш ПВЗ на карте.</span></div>
+        <button type="button" class="ozon-pvz-map-location" id="ozonPvzMapLocateBtn">Моё местоположение</button>
+      </div>
+      <div id="ozonPvzMap" class="ozon-pvz-map" aria-label="Карта пунктов выдачи Ozon"></div>
+      <div id="ozonPvzMapStatus" class="ozon-pvz-map-status" role="status" aria-live="polite">Загрузка карты…</div>
+    </section>
+  </dialog>
+  <script src="/__native_ozon_map__/ozon-native-bridge.js"></script>
+  <script src="/__native_ozon_map__/ozon-pvz-map.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{
+  "source": "miniapp static frontend",
+  "source_commit": "0bccba868ad287df26147abb48bb154d0faaf531",
+  "date": "2026-10-16",
+  "purpose": "Unmodified website HTML/CSS rendered in Android-test-only WebView. Fixture DOM data and existing visibility classes only; all network requests intercepted locally. Production stays native.",
+  "assets": [
+    {
+      "file": "app.js",
+      "bytes": 599220,
+      "sha256": "0bcdf1a4773cc51676e498660d793a9d9e0ad15f7f4f454728f9f5400723738a"
+    },
+    {
+      "file": "index.html",
+      "bytes": 107145,
+      "sha256": "0f16bf03276480d5cdb86d359345cba2ddce74e228460cd8129137ba1d930c52"
+    },
+    {
+      "file": "manrope_bold.ttf",
+      "bytes": 94928,
+      "sha256": "b9584e099e0e7f1e1e914c3037aabb9010c50346a3ce8df5eeeeecc0563044d8"
+    },
+    {
+      "file": "manrope_extrabold.ttf",
+      "bytes": 95688,
+      "sha256": "b8f802f05b322a7345805f5b89f8bb976604cc719a91530918d5ce3c47160950"
+    },
+    {
+      "file": "manrope_medium.ttf",
+      "bytes": 95060,
+      "sha256": "f433e5d333be1128d8ec8a28b8aadd0314d10e14e4105406076666bc830fc15d"
+    },
+    {
+      "file": "manrope_regular.ttf",
+      "bytes": 94972,
+      "sha256": "a13d9b41b0a471ce58f0e46d377fa3cc76615e4632c3b15eb397caadf7a13f0a"
+    },
+    {
+      "file": "manrope_semibold.ttf",
+      "bytes": 95096,
+      "sha256": "6bad1a774228464cc88b8b0271555b266f7a3c64a7bedf15e165fdab4f6ac0ce"
+    },
+    {
+      "file": "max-logo.svg",
+      "bytes": 1853,
+      "sha256": "d8ae1c550d0da0db7eef3d8886ade850877396652166ec9584da799c6f37a5b5"
+    },
+    {
+      "file": "ozon-pvz-map.js",
+      "bytes": 19876,
+      "sha256": "0cf9eaa9e8efc3f5910a23a0cd353bf452bac2273e5c8e2a40f392068cddba7e"
+    },
+    {
+      "file": "styles.css",
+      "bytes": 186729,
+      "sha256": "1a88da0b597351fb2bc95fa2d1849384350c6177c72268b5ec3510093e5e79b1"
+    },
+    {
+      "file": "auth.html",
+      "bytes": 17648,
+      "sha256": "8c86b533d4fea4778bb4f2b40b36f9ffce7bfe32d84bafeca4c2fb10118f05ac"
+    },
+    {
+      "file": "admin.html",
+      "bytes": 112972,
+      "sha256": "8871571c1db4b3317b3ae11212242a6d7e7597b3535354489bb2bf880f0c0e75"
+    },
+    {
+      "file": "site_robot.jpg",
+      "bytes": 504185,
+      "sha256": "e9a73c3457e910f5d4e59d360f217910ee68a597fa11b608551039c902f1914a"
+    }
+  ]
+}
