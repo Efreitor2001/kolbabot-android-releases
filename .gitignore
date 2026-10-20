@@ -1,8 +1,26 @@
 .gradle/
 .kotlin/
 .idea/
+*.iml
 local.properties
 **/build/
+.cxx/
+.externalNativeBuild/
+
+# Android Studio signed/debug package exports (outside app/build).
+/app/google/release/
+/app/google/debug/
+/app/rustore/release/
+/app/rustore/debug/
+/app/huawei/release/
+/app/huawei/debug/
+/app/release/
+/app/debug/
+*.apk
+*.aab
+*.ap_
+*.hprof
+
 *.jks
 *.keystore
 keystore.properties
@@ -10,7 +28,17 @@ signing.properties
 app/agconnect-services.json
 captures/
 
+# Local reports, release packages and temporary files.
 /validation/
 /releases/
-/*.log
 /ci-artifacts/
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*.swp
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
