@@ -45,6 +45,7 @@ internal val siteMoreNavigation = listOf(
     SiteNavigationItem("faq", "FAQ"),
     SiteNavigationItem("support", "Поддержка"),
     SiteNavigationItem("account", "Кабинет"),
+    SiteNavigationItem("analytics", "Статистика посещений"),
 )
 
 @Composable internal fun SiteBottomNavigation(section: String, moreOpen: Boolean, onSelect: (String) -> Unit) {

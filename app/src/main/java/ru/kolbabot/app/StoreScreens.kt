@@ -13,6 +13,8 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +29,13 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -61,13 +70,17 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     var cartScrollRequest by remember { mutableIntStateOf(0) }
     var handledCartScroll by remember { mutableIntStateOf(0) }
     var handledChromeRequest by remember { mutableIntStateOf(0) }
-    var cartRows by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var cart by remember { mutableStateOf<JSONObject?>(null) }
+    var cartOwner by remember { mutableLongStateOf(-1L) }
+    var cartLoading by remember { mutableStateOf(true) }
+    var cartError by remember { mutableStateOf("") }
     val cartTarget = remember { BringIntoViewRequester() }
     val chrome = LocalSiteChrome.current
     var productId by rememberSaveable { mutableLongStateOf(0L) }
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
     var visibleCount by rememberSaveable { mutableIntStateOf(30) }
+    var selectedVariants by rememberSaveable { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var revision by remember { mutableIntStateOf(0) }
     var catalog by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf("") }
@@ -76,6 +89,13 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val storeCart = remember(api) { StoreCart(context, api) }
+    val cartReady = cart != null && cartOwner == api.userId && !cartLoading
+    val cartRows = if (cartOwner == api.userId) cart?.items("items").orEmpty() else emptyList()
+    fun acceptCart(current: JSONObject, owner: Long) {
+        if (api.userId != owner) return
+        cart = current; cartOwner = owner
+        chrome?.cartCount = current.items("items").sumOf { it.optInt("quantity", 1) }
+    }
     LaunchedEffect(initialProductId) {
         if (initialProductId > 0) { productId = initialProductId; route = "product"; onProductOpened() }
     }
@@ -83,6 +103,16 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         error = ""
         try { catalog = api.get("/api/store") } catch (e: Exception) { error = storeFailure(e) }
     }
+    LaunchedEffect(api, catalog, api.userId, cartRevision) {
+        val products = catalog ?: return@LaunchedEffect
+        val owner = api.userId
+        cartLoading = true; cartError = ""
+        if (cartOwner != owner) cart = null
+        try { acceptCart(storeCart.load(products), owner) }
+        catch (e: Exception) { cartError = storeFailure(e) }
+        finally { cartLoading = false }
+    }
+    OnResume { cartRevision++ }
     LaunchedEffect(route, cartScrollRequest, catalog) {
         if (route == "catalog" && catalog != null && cartScrollRequest > handledCartScroll) {
             withFrameNanos { }
@@ -101,23 +131,33 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     }
     fun openCart() { route = "catalog"; cartScrollRequest++ }
     BackHandler(route != "catalog") { back() }
-    fun addProduct(id: Long) {
-        if (busy) return
+    fun updateQuantity(id: Long, quantity: Int, relative: Boolean, added: Boolean = false, closeDetail: Boolean = false) {
+        if (busy || !cartReady) return
         busy = true; message = ""; error = ""
+        val owner = api.userId
         scope.launch {
             try {
-                val products = catalog ?: api.get("/api/store").also { catalog = it }
-                cartRows = storeCart.add(id, products).items("items")
-                chrome?.cartCount = cartRows.sumOf { it.optInt("quantity", 1) }
-                cartRevision++
-                message = "Товар добавлен в корзину"
+                val products = checkNotNull(catalog)
+                val updated = if (relative) storeCart.changeQuantity(id, quantity, products)
+                    else storeCart.setQuantity(id, quantity, products)
+                if (api.userId == owner) {
+                    acceptCart(updated, owner)
+                    if (added) message = "Товар добавлен в корзину"
+                    if (closeDetail) {
+                        products.items("products").firstOrNull { it.optLong("id") == id }?.let {
+                            selectedVariants = selectedVariants + (variantGroup(it).ifBlank { id.toString() } to id)
+                        }
+                        route = "catalog"; productId = 0
+                    }
+                }
             } catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
         }
     }
     when (route) {
         "product" -> {
-            ProductScreen(api, productId, busy, message, error, ::back,
-                { productId = it; message = ""; error = "" }, ::addProduct, ::openCart, catalog?.optJSONObject("review_bonus_settings"))
+            ProductScreen(api, productId, busy || !cartReady, message, error.ifBlank { cartError }, ::back,
+                { productId = it; message = ""; error = "" }, { updateQuantity(it, 1, relative = true, added = true, closeDetail = true) },
+                ::openCart, catalog?.optJSONObject("review_bonus_settings"))
             return
         }
     }
@@ -145,18 +185,18 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                 fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
             Text("Выберите товары", fontSize = 17.28.sp, fontWeight = FontWeight.Bold)
         }
-        OutlinedTextField(search, { search = it; visibleCount = 30 }, Modifier.fillMaxWidth(),
+        OutlinedTextField(search, { search = it; visibleCount = 30; selectedVariants = emptyMap() }, Modifier.fillMaxWidth(),
             label = { Text("Поиск") }, singleLine = true, shape = RoundedCornerShape(12.dp),
             placeholder = { Text("Оболочка, специи, нож…") },
             trailingIcon = { Text("⌕", color = Color(0xFF778195), fontSize = 22.sp) })
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(category.isEmpty(), { category = ""; visibleCount = 30 },
+            FilterChip(category.isEmpty(), { category = ""; visibleCount = 30; selectedVariants = emptyMap() },
                 { Text("Все (${visibleStoreProducts(data.items("products"), "", "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                 Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
             data.items("categories").forEach { cat ->
                 val id = cat.optString("id", cat.optString("category_id"))
-                FilterChip(category == id, { category = id; visibleCount = 30 },
+                FilterChip(category == id, { category = id; visibleCount = 30; selectedVariants = emptyMap() },
                     { Text(cat.optString("title", cat.optString("name")) + " (${visibleStoreProducts(data.items("products"), id, "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                     Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
             }
@@ -172,8 +212,14 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         row.forEach { representative ->
                             key(variantGroup(representative).ifBlank { representative.optString("id") }, category, search) {
-                                StoreProductCard(api, representative, data.items("products"), busy, Modifier.weight(1f),
-                                    onOpen = { productId = it; route = "product" }, onAdd = ::addProduct)
+                                val selectionKey = variantGroup(representative).ifBlank { representative.optString("id") }
+                                StoreProductCard(api, representative, data.items("products"), cartRows, selectedVariants[selectionKey],
+                                    busy || !cartReady, Modifier.weight(1f),
+                                    onOpen = { productId = it; route = "product"; message = ""; error = "" },
+                                    onVariant = { selectedVariants = selectedVariants + (selectionKey to it) },
+                                    onAdd = { updateQuantity(it, 1, relative = true, added = true) },
+                                    onChange = { id, delta -> updateQuantity(id, delta, relative = true) },
+                                    onSet = { id, quantity -> updateQuantity(id, quantity, relative = false) })
                             }
                         }
                         repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
@@ -185,10 +231,10 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         if (filtered.size > visibleCount) OutlinedButton({ visibleCount += 30 }, Modifier.fillMaxWidth()) { Text("Показать ещё") }
         }
         Column(Modifier.fillMaxWidth().bringIntoViewRequester(cartTarget).testTag("storeInlineCart")) {
-            CartContent(api, data, cartRevision, { onNavigate("account") }) { current ->
-                cartRows = current.items("items")
-                chrome?.cartCount = cartRows.sumOf { it.optInt("quantity", 1) }
-            }
+            CartContent(api, data, if (cartOwner == api.userId) cart else null, busy || cartLoading, cartError,
+                onLogin = { onNavigate("account") }, onRefresh = { cartRevision++ },
+                onChange = { id, delta -> updateQuantity(id, delta, relative = true) },
+                onRemove = { updateQuantity(it, 0, relative = false) })
         }
     }
 }
@@ -206,10 +252,11 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     enabled = true, selected = selected, borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f),
     selectedBorderColor = Color(0xFF147A66), borderWidth = 1.dp, selectedBorderWidth = 1.dp)
 
-@Composable private fun StoreProductCard(api: ApiClient, representative: JSONObject, products: List<JSONObject>, busy: Boolean,
-                                        modifier: Modifier, onOpen: (Long) -> Unit, onAdd: (Long) -> Unit) {
+@Composable private fun StoreProductCard(api: ApiClient, representative: JSONObject, products: List<JSONObject>,
+                                        cartRows: List<JSONObject>, selectedVariant: Long?, busy: Boolean, modifier: Modifier,
+                                        onOpen: (Long) -> Unit, onVariant: (Long) -> Unit, onAdd: (Long) -> Unit,
+                                        onChange: (Long, Int) -> Unit, onSet: (Long, Int) -> Unit) {
     val variants = remember(products, representative) { products.filter { variantGroup(representative).isNotBlank() && variantGroup(it) == variantGroup(representative) } }
-    var selectedVariant by rememberSaveable { mutableLongStateOf(representative.optLong("id")) }
     val product = variants.firstOrNull { it.optLong("id") == selectedVariant } ?: representative
     val id = product.optLong("id")
     Card(modifier.testTag("store-product-$id"), shape = RoundedCornerShape(17.dp),
@@ -228,15 +275,60 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                 }
             }
             if (variants.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                variants.forEach { variant -> FilterChip(variant.optLong("id") == id, { selectedVariant = variant.optLong("id") },
+                variants.forEach { variant -> FilterChip(variant.optLong("id") == id, { onVariant(variant.optLong("id")) },
                     { Text(variant.optString("variant_label").ifBlank { variant.optString("title") } + " · " + money(variant.optLong("price_kopecks"))) },
+                    Modifier.testTag("store-variant-${variant.optLong("id")}"),
                     colors = storeVariantColors(), border = storeVariantBorder(variant.optLong("id") == id), shape = RoundedCornerShape(10.dp)) }
             }
             Text(money(product.optLong("price_kopecks")), color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-            Button({ onAdd(id) }, Modifier.fillMaxWidth(), enabled = !busy, shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF04C160), contentColor = Color.White)) { Text("В корзину") }
+            val quantity = cartRows.firstOrNull { it.optLong("product_id", it.optLong("id")) == id }?.optInt("quantity") ?: 0
+            if (quantity > 0) StoreQuantityControl(id, quantity, busy, onChange, onSet)
+            else OutlinedButton({ onAdd(id) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("store-add-$id"),
+                enabled = !busy, shape = RoundedCornerShape(999.dp), border = BorderStroke(1.dp, Color(0xFF04C160)),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color(0xFF2C2D30),
+                    disabledContainerColor = Color.White, disabledContentColor = Color(0xFF2C2D30)),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("В корзину", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Добавить", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun StoreQuantityControl(id: Long, quantity: Int, busy: Boolean,
+                                 onChange: (Long, Int) -> Unit, onSet: (Long, Int) -> Unit) {
+    var input by remember(id, quantity) { mutableStateOf(quantity.toString()) }
+    var focused by remember(id) { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(id, quantity, busy, focused) {
+        if (!busy && !focused) input = quantity.toString()
+    }
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).background(Color(0xFFF4F7FB), RoundedCornerShape(12.dp))
+        .testTag("store-quantity-$id"), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center) {
+        TextButton({ onChange(id, -1) }, Modifier.size(48.dp).semantics { contentDescription = "Уменьшить количество" },
+            enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1769FF))) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+        BasicTextField(input, { value -> input = value.filter(Char::isDigit).take(3) },
+            Modifier.width(48.dp).heightIn(min = 48.dp).testTag("store-quantity-input-$id")
+                .semantics { contentDescription = "Количество товара" }
+                .onFocusChanged { state ->
+                    if (focused && !state.isFocused && !busy) {
+                        val next = (input.toIntOrNull() ?: 0).coerceIn(0, 999)
+                        if (next != quantity) onSet(id, next)
+                    }
+                    focused = state.isFocused
+                },
+            enabled = !busy, singleLine = true,
+            textStyle = TextStyle(color = Color(0xFF111827), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } })
+        TextButton({ onChange(id, 1) }, Modifier.size(48.dp).semantics { contentDescription = "Увеличить количество" },
+            enabled = !busy && quantity < 999, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1769FF))) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
     }
 }
 
@@ -333,7 +425,13 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
             if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
             if (error.isNotBlank()) ErrorMessage(error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ add(id) }, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF04C160), contentColor = Color.White)) { Text("В корзину") }
+                Button({ add(id) }, Modifier.weight(1f).testTag("store-detail-add-$id")
+                    .background(Brush.linearGradient(listOf(Color(0xFF1B937C), Color(0xFF147A66))), RoundedCornerShape(9.dp)),
+                    enabled = !busy, shape = RoundedCornerShape(9.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White,
+                        disabledContainerColor = Color.Transparent, disabledContentColor = Color.White)) {
+                    Text("Добавить в корзину", fontWeight = FontWeight.ExtraBold)
+                }
                 OutlinedButton(cart) { Text("Открыть корзину") }
             }
             if (p.optString("product_type") == "digital_book") Text("Электронная книга. После оплаты доставляется на указанный e-mail.")
@@ -394,26 +492,14 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
 }
 
 @Composable
-private fun CartContent(api: ApiClient, originalCatalog: JSONObject?, refreshKey: Int, onLogin: () -> Unit, onCartChanged: (JSONObject) -> Unit) {
-    var cart by remember { mutableStateOf<JSONObject?>(null) }
-    var catalog by remember { mutableStateOf(originalCatalog) }
-    var error by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var revision by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val storeCart = remember(api) { StoreCart(context, api) }
-    LaunchedEffect(api, revision, refreshKey) {
-        error = ""
-        try { catalog = originalCatalog ?: api.get("/api/store"); cart = storeCart.load(catalog!!); onCartChanged(cart!!) }
-        catch (e: Exception) { error = storeFailure(e) }
-    }
+private fun CartContent(api: ApiClient, catalog: JSONObject, cart: JSONObject?, busy: Boolean, error: String,
+                        onLogin: () -> Unit, onRefresh: () -> Unit, onChange: (Long, Int) -> Unit, onRemove: (Long) -> Unit) {
     SectionCard("Корзина") {
         Text("Ваш заказ · Товары и доставка", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (error.isNotBlank()) ErrorMessage(error)
         if (cart == null && error.isBlank()) CircularProgressIndicator()
         cart?.optString("merge_notice")?.takeIf { it.isNotBlank() }?.let { Text(it) }
-        OutlinedButton({ revision++ }, enabled = !busy) { Text("Обновить корзину") }
+        OutlinedButton(onRefresh, enabled = !busy) { Text("Обновить корзину") }
         val rows = cart?.items("items") ?: emptyList()
         if (cart != null && rows.isEmpty()) Text("Корзина пуста. Выберите товары в магазине.")
         rows.forEach { item ->
@@ -422,35 +508,23 @@ private fun CartContent(api: ApiClient, originalCatalog: JSONObject?, refreshKey
                     NetworkImage(photoUrl(api, item), item.optString("title"), Modifier.size(60.dp))
                     Text(money(item.optLong("price_kopecks") * item.optInt("quantity", 1)), fontWeight = FontWeight.Bold)
                 }
-                fun change(quantity: Int) {
-                    if (busy) return
-                    busy = true; error = ""
-                    val update = rows.mapNotNull { row ->
-                        if (row.optLong("product_id") != item.optLong("product_id")) row
-                        else if (quantity <= 0) null
-                        else JSONObject(row.toString()).put("quantity", quantity.coerceAtMost(999))
-                    }
-                    scope.launch {
-                        try { cart = storeCart.save(update, catalog ?: JSONObject()); onCartChanged(cart!!) }
-                        catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
-                    }
-                }
+                val id = item.optLong("product_id", item.optLong("id"))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton({ change(item.optInt("quantity", 1) - 1) }, enabled = !busy) { Text("−") }
+                    OutlinedButton({ onChange(id, -1) }, Modifier.testTag("cart-minus-$id"), enabled = !busy) { Text("−") }
                     Text("${item.optInt("quantity", 1)} шт.")
-                    OutlinedButton({ change(item.optInt("quantity", 1) + 1) }, enabled = !busy && item.optInt("quantity", 1) < 999) { Text("+") }
+                    OutlinedButton({ onChange(id, 1) }, Modifier.testTag("cart-plus-$id"), enabled = !busy && item.optInt("quantity", 1) < 999) { Text("+") }
                 }
-                TextButton({ change(0) }, enabled = !busy) { Text("Убрать товар") }
+                TextButton({ onRemove(id) }, enabled = !busy) { Text("Убрать товар") }
             }
         }
         if (rows.isNotEmpty()) {
             val subtotal = rows.sumOf { it.optLong("price_kopecks") * it.optInt("quantity", 1) }
-            val digitalIds = catalog?.items("products")?.filter { it.optString("product_type") == "digital_book" }?.map { it.optLong("id") }?.toSet().orEmpty()
-            val minimum = if (rows.all { it.optLong("product_id") in digitalIds }) 0 else catalog?.optJSONObject("store_settings")?.optLong("minimum_order_kopecks") ?: 0
+            val digitalIds = catalog.items("products").filter { it.optString("product_type") == "digital_book" }.map { it.optLong("id") }.toSet()
+            val minimum = if (rows.all { it.optLong("product_id") in digitalIds }) 0 else catalog.optJSONObject("store_settings")?.optLong("minimum_order_kopecks") ?: 0
             Text("Товары: ${money(subtotal)}", style = MaterialTheme.typography.titleLarge)
             if (subtotal < minimum) Text("До минимального заказа осталось ${money(minimum - subtotal)}")
             if (!api.authenticated) Button(onLogin, Modifier.fillMaxWidth(), enabled = !busy) { Text("Войти для оформления") }
-            else if (catalog != null && cart != null) CheckoutContent(api, cart!!, catalog!!, busy) { revision++ }
+            else if (cart != null) CheckoutContent(api, cart, catalog, busy, onRefresh)
         }
     }
 }

@@ -60,6 +60,9 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
     var revision by remember { mutableIntStateOf(0) }
+    var visitors by remember(api) { mutableStateOf<JSONObject?>(null) }
+    var visitorsError by remember { mutableStateOf("") }
+    var visitorsLoading by remember { mutableStateOf(true) }
     val dashboardScroll = rememberScrollState()
     OnResume { revision++ }
     BackHandler(onBack = onBack)
@@ -70,6 +73,18 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
         catch (failure: Exception) { error = failure.message ?: "Не удалось загрузить данные. Попробуйте обновить." }
         finally { loading = false }
     }
+    LaunchedEffect(api, revision, api.userId) {
+        visitorsLoading = true; visitorsError = ""
+        try {
+            val result = api.get("/api/admin/analytics")
+            analyticsRows(result)
+            visitors = result
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            visitors = null
+            visitorsError = failure.message ?: "Не удалось загрузить посещаемость."
+        } finally { visitorsLoading = false }
+    }
     Column(Modifier.fillMaxSize().background(SiteColors.BackgroundTop).verticalScroll(dashboardScroll).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         CompositionLocalProvider(LocalAdminScrollOffset provides { dashboardScroll.value }) { LocalAdminChrome.current?.invoke() }
@@ -78,9 +93,32 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
         Text("Здесь всё, что требует решения прямо сейчас.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
         Text(if (data == null && loading) "Загружаем актуальные данные…" else "Обновлено ${dashboardDate(data?.optString("generated_at").orEmpty(), "только что")}",
             style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
-        OutlinedButton(onClick = { revision++ }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Обновить") }
+        OutlinedButton(onClick = { revision++ }, enabled = !loading && !visitorsLoading, modifier = Modifier.fillMaxWidth()) { Text("Обновить") }
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         ErrorMessage(error)
+        DashboardCard("Аудитория", "Посещаемость", "dashboard-visitors") {
+            if (visitorsLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            ErrorMessage(visitorsError)
+            visitors?.let { stats ->
+                Row(Modifier.fillMaxWidth()) {
+                    listOf("Период", "Всего", "Сайт", "Android").forEach { title ->
+                        Text(title, Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                analyticsRows(stats).forEach { (period, counts) ->
+                    HorizontalDivider(color = SiteColors.Border)
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(period, Modifier.weight(1f), fontSize = 12.sp)
+                        counts.forEach { Text(dashboardNumber(it), Modifier.weight(1f), fontSize = 12.sp) }
+                    }
+                }
+                Text("По московскому времени. Один аккаунт на сайте и в Android учитывается один раз в «Всего», поэтому сумма каналов может быть больше.",
+                    style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                stats.optString("started_at").takeUnless { it.isBlank() || it == "null" }?.let {
+                    Text("Начало учёта: ${dashboardDate(it, it)}", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+                }
+            }
+        }
         data?.let { dashboard -> DashboardContents(dashboard, onNavigate) }
     }
 }

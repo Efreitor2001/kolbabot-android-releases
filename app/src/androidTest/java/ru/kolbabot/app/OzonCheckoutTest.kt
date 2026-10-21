@@ -124,6 +124,10 @@ class OzonCheckoutTest {
 
     private class DeliveryApi(context: Context, checkout: Boolean, private val delayedQuotes: Boolean = false) : ApiClient(context, "https://ozon-fixture.invalid") {
         override var userId = 7L
+        override suspend fun getCart(expectedUserId: Long): JSONObject {
+            check(userId == expectedUserId)
+            return get("/api/store/cart")
+        }
         val posts = CopyOnWriteArrayList<Pair<String, JSONObject>>()
         val quoteGates = CopyOnWriteArrayList<CompletableDeferred<JSONObject>>()
         private val product = JSONObject("""{"id":1,"product_id":1,"title":"Специи","product_type":"physical","price_kopecks":15000,"quantity":1,"weight_grams":100}""")

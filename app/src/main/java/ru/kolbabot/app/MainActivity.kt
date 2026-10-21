@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     var pendingSection by rememberSaveable { mutableStateOf("") }
     var selectedSection by rememberSaveable { mutableStateOf("store") }
     var moreOpen by rememberSaveable { mutableStateOf(false) }
+    var analyticsPreferences by rememberSaveable { mutableStateOf(false) }
+    val analyticsConsent by api.analytics.consent.collectAsState()
     var adminReturnTab by rememberSaveable { mutableIntStateOf(0) }
     var adminReturnSection by rememberSaveable { mutableStateOf("store") }
     val context = LocalContext.current
@@ -71,6 +73,7 @@ class MainActivity : ComponentActivity() {
     }
     fun navigate(destination: AppDestination) {
         moreOpen = false
+        if (destination.section == "analytics") { analyticsPreferences = true; return }
         if (destination.section == "admin" && tab != 5) {
             adminReturnTab = tab
             adminReturnSection = selectedSection
@@ -143,6 +146,8 @@ class MainActivity : ComponentActivity() {
         }
     }
     Scaffold(bottomBar = {
+        Column {
+        if (!checking && tab != 5 && analyticsConsent == AnalyticsConsent.UNDECIDED) AnalyticsConsentCard(api)
         if (tab != 5 && (checking || user != null || tab != 4)) {
         SiteBottomNavigation(selectedSection, moreOpen) { section ->
             if (section == "more") moreOpen = true else {
@@ -152,6 +157,7 @@ class MainActivity : ComponentActivity() {
                 // Preserve each native screen's saved draft when using the bottom bar.
                 tab = when (section) { "recipes" -> 1; "custom" -> 3; "account" -> 4; else -> 0 }
             }
+        }
         }
         }
     }) { insets ->
@@ -183,4 +189,8 @@ class MainActivity : ComponentActivity() {
     if (moreOpen) SiteNavigationSheet(api, user?.optLong("id") ?: 0L, selectedSection,
         onDismiss = { moreOpen = false }, onSelect = { navigate(AppDestination(it)) })
     if (enablePushStartup) NotificationStartup(api, if (checking) 0 else verifiedPushUserId)
+    VisitorAnalyticsLifecycle(api, !checking && tab != 5 && selectedSection != "admin", revision)
+    if (analyticsPreferences) AlertDialog(onDismissRequest = { analyticsPreferences = false },
+        text = { AnalyticsConsentCard(api) { analyticsPreferences = false } },
+        confirmButton = { TextButton(onClick = { analyticsPreferences = false }) { Text("Закрыть") } })
 }

@@ -109,34 +109,34 @@ internal class StoreCart(context: Context, private val api: ApiClient) {
     }
     private fun notice(cart: JSONObject, text: String): JSONObject = JSONObject(cart.toString()).put("merge_notice", text)
     private suspend fun rejectedMerge(uid: Long, pending: String, reason: String): JSONObject {
-        check(api.userId == uid) { "Аккаунт изменился. Откройте корзину заново." }
-        val snapshot = "${pending}_guest"
-        val edit = preferences.edit()
-        if (preferences.contains(snapshot)) {
-            // Restore only the originally local selections. The saved PUT also
-            // includes private server items and must never become a guest cart.
-            val restored = mergeCartQuantities(rows("items"), rows(snapshot))
-            edit.putString("items", array(restored).toString())
-        } else {
-            // Preserve a legacy/corrupt attempt under its owner, without replaying
-            // it forever or exposing another account's items to the guest cart.
-            edit.putString("rejected_$uid", preferences.getString(pending, "[]"))
+        api.withCartOwner(uid) {
+            val snapshot = "${pending}_guest"
+            val edit = preferences.edit()
+            if (preferences.contains(snapshot)) {
+                // The saved PUT includes private server items; restore only its guest portion.
+                val restored = mergeCartQuantities(rows("items"), rows(snapshot))
+                edit.putString("items", array(restored).toString())
+            } else {
+                edit.putString("rejected_$uid", preferences.getString(pending, "[]"))
+            }
+            check(edit.remove(pending).remove(snapshot).commit()) { "Не удалось восстановить гостевую корзину." }
         }
-        check(edit.remove(pending).remove(snapshot).commit()) { "Не удалось восстановить гостевую корзину." }
-        return notice(api.get("/api/store/cart"), "$reason Гостевые товары сохранены на устройстве. Корзину аккаунта можно редактировать; после освобождения места обновите её.")
+        return notice(api.getCart(uid), "$reason Гостевые товары сохранены на устройстве. Корзину аккаунта можно редактировать; после освобождения места обновите её.")
     }
-    private suspend fun loadUnlocked(catalog: JSONObject): JSONObject {
-        if (!api.authenticated) return guest(catalog)
-        val uid = api.userId; val pending = "pending_$uid"
+    private suspend fun loadUnlocked(catalog: JSONObject, uid: Long): JSONObject {
+        if (uid <= 0) return api.withCartOwner(uid) { guest(catalog) }
+        val pending = "pending_$uid"
         if (!preferences.contains(pending)) {
-            val server = api.get("/api/store/cart"); val local = rows("items")
+            val server = api.getCart(uid)
+            val local = api.withCartOwner(uid) { rows("items") }
             if (local.isEmpty()) return server
-            check(api.userId == uid) { "Аккаунт изменился. Откройте корзину заново." }
             val merged = mergeCartQuantities(server.items("items"), local)
             if (merged.size > MAX_LINES) return notice(server,
                 "Гостевые товары пока не добавлены: вместе получится ${merged.size} позиций, максимум — $MAX_LINES. Уберите лишние позиции из корзины аккаунта и обновите её. Гостевые товары сохранены на устройстве.")
-            check(preferences.edit().putString(pending, array(merged).toString())
-                .putString("${pending}_guest", array(local).toString()).remove("items").commit()) { "Не удалось сохранить корзину на устройстве." }
+            api.withCartOwner(uid) {
+                check(preferences.edit().putString(pending, array(merged).toString())
+                    .putString("${pending}_guest", array(local).toString()).remove("items").commit()) { "Не удалось сохранить корзину на устройстве." }
+            }
         }
         check(api.userId == uid) { "Аккаунт изменился. Откройте корзину заново." }
         val exact = runCatching {
@@ -146,31 +146,64 @@ internal class StoreCart(context: Context, private val api: ApiClient) {
                 require(it.optLong("product_id") > 0 && it.optInt("quantity") in 1..999)
             } }
         }.getOrElse { return rejectedMerge(uid, pending, "Не удалось восстановить предыдущую попытку объединения.") }
-        val saved = try { api.put("/api/store/cart", body(exact)) }
+        val saved = try { api.putCart(uid, body(exact)) }
         catch (failure: ApiException) {
             if (failure.status in setOf(400, 422)) return rejectedMerge(uid, pending, "Сервер отклонил объединение корзин.")
             throw failure
         }
-        check(api.userId == uid) { "Аккаунт изменился. Откройте корзину заново." }
-        check(preferences.edit().remove(pending).remove("${pending}_guest").commit()) { "Не удалось подтвердить сохранение корзины." }
+        api.withCartOwner(uid) {
+            check(preferences.edit().remove(pending).remove("${pending}_guest").commit()) { "Не удалось подтвердить сохранение корзины." }
+        }
         return saved
     }
-    suspend fun load(catalog: JSONObject): JSONObject = lock.withLock { loadUnlocked(catalog) }
-    suspend fun save(items: List<JSONObject>, catalog: JSONObject): JSONObject = lock.withLock { saveUnlocked(items, catalog) }
-    private suspend fun saveUnlocked(items: List<JSONObject>, catalog: JSONObject): JSONObject {
+    suspend fun load(catalog: JSONObject): JSONObject {
+        val uid = api.userId
+        return lock.withLock {
+            val result = loadUnlocked(catalog, uid)
+            api.withCartOwner(uid) { result }
+        }
+    }
+    suspend fun save(items: List<JSONObject>, catalog: JSONObject): JSONObject {
+        val uid = api.userId
+        return lock.withLock { saveUnlocked(items, catalog, uid) }
+    }
+    private suspend fun saveUnlocked(items: List<JSONObject>, catalog: JSONObject, uid: Long): JSONObject {
         val sanitized = mergeCartQuantities(emptyList(), items)
         // Old versions/recovery may contain more rows. Always allow removal,
         // while preventing a new oversized guest cart or a rejected server PUT.
-        require(sanitized.size <= MAX_LINES || (!api.authenticated && sanitized.size < rows("items").size)) {
+        require(sanitized.size <= MAX_LINES || (uid <= 0 && sanitized.size < rows("items").size)) {
             "В корзине может быть не больше $MAX_LINES разных товаров. Уберите лишние позиции."
         }
-        if (api.authenticated) return api.put("/api/store/cart", body(sanitized))
-        check(preferences.edit().putString("items", array(sanitized).toString()).commit()) { "Не удалось сохранить корзину на устройстве." }
-        return guest(catalog)
+        if (uid > 0) return api.putCart(uid, body(sanitized))
+        return api.withCartOwner(uid) {
+            check(preferences.edit().putString("items", array(sanitized).toString()).commit()) { "Не удалось сохранить корзину на устройстве." }
+            guest(catalog)
+        }
     }
-    suspend fun add(id: Long, catalog: JSONObject): JSONObject = lock.withLock {
-        val current = loadUnlocked(catalog)
-        saveUnlocked(mergeCartQuantities(current.items("items"), listOf(JSONObject().put("product_id", id).put("quantity", 1))), catalog)
+    private suspend fun updateQuantity(id: Long, catalog: JSONObject, quantity: (Int) -> Int): JSONObject {
+        require(id > 0) { "Неизвестный товар." }
+        val uid = api.userId
+        return lock.withLock {
+            val current = loadUnlocked(catalog, uid)
+            val currentRows = current.items("items")
+            val previous = currentRows.firstOrNull { it.optLong("product_id", it.optLong("id")) == id }
+                ?.optInt("quantity") ?: 0
+            val target = quantity(previous).coerceIn(0, 999)
+            if (target == previous) return@withLock api.withCartOwner(uid) { current }
+            val updated = currentRows.mapNotNull { row ->
+                if (row.optLong("product_id", row.optLong("id")) != id) row
+                else if (target == 0) null
+                else JSONObject(row.toString()).put("quantity", target)
+            }.toMutableList()
+            if (target > 0 && previous == 0) updated += JSONObject().put("product_id", id).put("quantity", target)
+            val saved = saveUnlocked(updated, catalog, uid)
+            api.withCartOwner(uid) { saved }
+        }
     }
+    suspend fun changeQuantity(id: Long, delta: Int, catalog: JSONObject): JSONObject =
+        updateQuantity(id, catalog) { (it.toLong() + delta).coerceIn(0L, 999L).toInt() }
+    suspend fun adjustQuantity(id: Long, delta: Int, catalog: JSONObject): JSONObject = changeQuantity(id, delta, catalog)
+    suspend fun setQuantity(id: Long, quantity: Int, catalog: JSONObject): JSONObject = updateQuantity(id, catalog) { quantity }
+    suspend fun add(id: Long, catalog: JSONObject): JSONObject = changeQuantity(id, 1, catalog)
     companion object { private val lock = Mutex(); private const val MAX_LINES = 100 }
 }

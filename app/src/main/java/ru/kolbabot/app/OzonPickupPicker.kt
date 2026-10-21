@@ -238,6 +238,7 @@ private fun OzonMap(api: ApiClient, selected: JSONObject?, modifier: Modifier, o
     val webView = remember(api) {
         WebView(context).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            settings.userAgentString = settings.userAgentString + " KolbaBotAndroid"
             settings.javaScriptEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false

@@ -150,6 +150,10 @@ class SystemBackNavigationTest {
 private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boolean = false) : ApiClient(context, "https://back-smoke.invalid") {
     val reads = CopyOnWriteArrayList<String>()
     init { userId = id }
+    override suspend fun getCart(expectedUserId: Long): JSONObject {
+        check(userId == expectedUserId)
+        return get("/api/store/cart")
+    }
     fun profile() = JSONObject().put("id", userId).put("username", "Проверка навигации").put("is_admin", admin).put("admin_2fa_enabled", true)
     private fun listedUser() = JSONObject().put("id", 44).put("username", "Пользователь списка").put("is_active", true)
     override suspend fun get(path: String): JSONObject {

@@ -99,8 +99,9 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
     private var csrf = ""
     private val expired = MutableStateFlow(0)
     val sessionExpiry = expired.asStateFlow()
+    internal val analytics by lazy { VisitorAnalytics(applicationContext) }
     @Volatile open var userId: Long = 0
-        protected set(value) { field = value; onPushAccountChanged(applicationContext, value) }
+        protected set(value) { field = value; analytics.confirmAccount(value); onPushAccountChanged(applicationContext, value) }
     val authenticated: Boolean get() = userId > 0
 
     init {
@@ -139,13 +140,75 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
     open suspend fun patch(path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()): JSONObject = request("PATCH", path, body, headers)
     open suspend fun delete(path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()): JSONObject = request("DELETE", path, body, headers)
 
-    private suspend fun request(method: String, path: String, body: JSONObject? = null, headers: Map<String, String> = emptyMap()): JSONObject = withContext(Dispatchers.IO) {
+    /** Cart snapshots belong to one account. Check after acquiring the same gate
+     * used by login/logout, so a queued PUT cannot be sent with another cookie. */
+    internal open suspend fun getCart(expectedUserId: Long): JSONObject =
+        request("GET", "/api/store/cart", expectedUserId = expectedUserId)
+
+    internal open suspend fun putCart(expectedUserId: Long, body: JSONObject): JSONObject =
+        request("PUT", "/api/store/cart", body, expectedUserId = expectedUserId)
+
+    internal suspend fun <T> withCartOwner(expectedUserId: Long, operation: () -> T): T =
+        withContext(Dispatchers.IO) { gate.withLock {
+            check(userId == expectedUserId) { "Аккаунт изменился. Откройте корзину заново." }
+            operation()
+        } }
+
+    /** Snapshot the existing session, then use a short independent connection so analytics
+     * cannot hold the shop/payment request mutex while an analytics endpoint is unavailable. */
+    internal open suspend fun reportAnalytics(visit: AnalyticsVisit, current: () -> Boolean): JSONObject? = withContext(Dispatchers.IO) {
+        val path = "/api/analytics/visit"
+        val uri = ApiContract.endpoint(baseUrl, path)
+        suspend fun execute(): JSONObject? {
+            val headers = gate.withLock {
+                if (!current() || userId != visit.accountId) return@withLock null
+                cookies.get(uri, emptyMap()).mapValues { (_, values) -> values.joinToString("; ") } to csrf
+            } ?: return null
+            if (!current()) return null
+            val connection = uri.toURL().openConnection() as HttpURLConnection
+            try {
+                connection.requestMethod = "POST"
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 4000
+                connection.readTimeout = 4000
+                connection.useCaches = false
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.setRequestProperty("User-Agent", "KolbaBotAndroid")
+                connection.setRequestProperty("Origin", baseUrl)
+                headers.first.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+                if (headers.second.isNotBlank()) connection.setRequestProperty("X-CSRF-Token", headers.second)
+                val body = JSONObject().put("platform", "android").put("visitor_id", visit.installationId).put("consent", true)
+                if (visit.guestToken.isNotBlank()) body.put("guest_token", visit.guestToken)
+                if (visit.guestReset && visit.accountId == 0L) body.put("guest_reset", true)
+                connection.doOutput = true
+                if (!current()) return null
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val status = connection.responseCode
+                val stream = if (status >= 400) connection.errorStream else connection.inputStream
+                val source = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText().also { text -> require(text.length <= 8192) } }.orEmpty()
+                return ApiContract.unwrap(status, source)
+            } finally { connection.disconnect() }
+        }
+        // Auth refresh belongs to normal navigation. A telemetry 401/403 must never
+        // clear the user's session or cause a visible logout; a later visit retries.
+        execute()
+    }
+
+    private suspend fun request(method: String, path: String, body: JSONObject? = null, headers: Map<String, String> = emptyMap(),
+                                expectedUserId: Long? = null): JSONObject = withContext(Dispatchers.IO) {
         gate.withLock {
             val mobile = path.startsWith("/api/mobile/auth/")
             val anonymousAuth = mobile || path in setOf("/api/auth/login", "/api/auth/login/2fa", "/api/auth/register", "/api/auth/register/confirm", "/api/auth/password-reset/request", "/api/auth/password-reset/confirm")
             fun execute(): JSONObject {
+                if (expectedUserId != null) check(expectedUserId > 0 && userId == expectedUserId) {
+                    "Аккаунт изменился. Откройте корзину заново."
+                }
                 val response = transport(method, path, body, headers, anonymous = anonymousAuth)
                 val data = ApiContract.unwrap(response.status, String(response.bytes, Charsets.UTF_8))
+                if (expectedUserId != null) check(data.optLong("user_id", -1) == expectedUserId) {
+                    "Аккаунт изменился. Откройте корзину заново."
+                }
                 if (response.csrf.isNotBlank()) csrf = response.csrf
                 else if (data.optString("csrf_token").isNotBlank()) csrf = data.optString("csrf_token")
                 if (path.substringBefore('?') in setOf("/api/auth/me", "/api/auth/login", "/api/auth/login/2fa", "/api/auth/register/confirm", "/api/mobile/auth/exchange") && data.has("user"))
@@ -162,6 +225,10 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
                     val fresh = transport("GET", "/api/auth/me", null, emptyMap())
                     val me = ApiContract.unwrap(fresh.status, String(fresh.bytes, Charsets.UTF_8))
                     csrf = fresh.csrf.ifBlank { me.optString("csrf_token") }
+                    if (expectedUserId != null) {
+                        userId = me.optJSONObject("user")?.optLong("id") ?: 0
+                        check(userId == expectedUserId) { "Аккаунт изменился. Откройте корзину заново." }
+                    }
                     execute()
                 } else throw error
             }

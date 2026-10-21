@@ -32,7 +32,7 @@ class GuestCartSmokeTest {
         assertEquals(0, api.privateReads)
         compose.onNode(hasText("Корзина") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("1 шт.").assertExists()
-        compose.onNodeWithText("+").performScrollTo().performClick()
+        compose.onNodeWithTag("cart-plus-101").performScrollTo().performClick()
         compose.onNodeWithText("2 шт.").assertExists()
         compose.onNodeWithText("Войти для оформления").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(askedToLogin); api.signIn() }
@@ -49,13 +49,21 @@ class GuestCartSmokeTest {
         compose.onNodeWithText("Оформить заказ").performScrollTo().assertIsNotEnabled()
     }
 
-    private class GuestApi(context: Context) : ApiClient(context) {
+    private class GuestApi(context: Context) : ApiClient(context, "https://guest-cart.invalid") {
         override var userId: Long = 0
         fun signIn() { userId = 7 }
         var privateReads = 0; var writes = 0
         private val product = JSONObject("""{"id":101,"title":"Оболочка тестовая","price_kopecks":15000,"product_type":"physical","weight_grams":100} """)
         private var quantity = 3
         private fun cart() = JSONObject().put("items", JSONArray().put(JSONObject(product.toString()).put("product_id", 101).put("quantity", quantity)))
+        override suspend fun getCart(expectedUserId: Long): JSONObject {
+            check(userId == expectedUserId)
+            return get("/api/store/cart").put("user_id", expectedUserId)
+        }
+        override suspend fun putCart(expectedUserId: Long, body: JSONObject): JSONObject {
+            check(userId == expectedUserId)
+            return put("/api/store/cart", body).put("user_id", expectedUserId)
+        }
         override suspend fun get(path: String): JSONObject = when(path) {
             "/api/store" -> JSONObject().put("products", JSONArray().put(product)).put("banners", JSONArray())
             "/api/store/cart" -> { check(authenticated); privateReads++; cart() }

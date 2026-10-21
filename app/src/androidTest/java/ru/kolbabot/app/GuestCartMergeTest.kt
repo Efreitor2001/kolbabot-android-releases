@@ -130,6 +130,14 @@ class GuestCartMergeTest {
         private fun result() = JSONObject().put("user_id", userId).put("items", JSONArray().apply {
             server.forEach { put(JSONObject(it.toString())) }
         })
+        override suspend fun getCart(expectedUserId: Long): JSONObject {
+            check(userId == expectedUserId)
+            return get("/api/store/cart")
+        }
+        override suspend fun putCart(expectedUserId: Long, body: JSONObject): JSONObject {
+            check(userId == expectedUserId)
+            return put("/api/store/cart", body)
+        }
         override suspend fun get(path: String): JSONObject {
             check(authenticated && path == "/api/store/cart")
             if (failGet) throw IOException("Fixture read failure")

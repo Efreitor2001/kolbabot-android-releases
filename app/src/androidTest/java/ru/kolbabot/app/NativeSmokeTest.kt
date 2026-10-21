@@ -242,6 +242,15 @@ private class FakeApi(context: Context) : ApiClient(context, "https://native-smo
 
     init { userId = 7L }
 
+    override suspend fun getCart(expectedUserId: Long): JSONObject {
+        check(userId == expectedUserId)
+        return get("/api/store/cart")
+    }
+    override suspend fun putCart(expectedUserId: Long, body: JSONObject): JSONObject {
+        check(userId == expectedUserId)
+        return put("/api/store/cart", body)
+    }
+
     private fun record(method: String, path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()) {
         requests += RecordedRequest(method, path, JSONObject(body.toString()), headers.toMap())
     }
