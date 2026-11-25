@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -51,10 +52,13 @@ private enum class ChatStatus(val key: String, val userLabel: String, val adminL
     fun label(admin: Boolean) = if (admin) adminLabel else userLabel
 
     @Composable
-    fun tint(): Color = when (this) {
-        Open -> if (LocalSiteDark.current) Color(0xFFFFD581) else Color(0xFF87520B)
-        Working -> if (LocalSiteDark.current) Color(0xFF9CDAFF) else Color(0xFF155A83)
-        Answered -> if (LocalSiteDark.current) Color(0xFF83E7BC) else Color(0xFF146B53)
+    fun tint(): Color {
+        val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        return when (this) {
+            Open -> if (dark) Color(0xFFFFD581) else Color(0xFF87520B)
+            Working -> if (dark) Color(0xFF9CDAFF) else Color(0xFF155A83)
+            Answered -> if (dark) Color(0xFF83E7BC) else Color(0xFF146B53)
+        }
     }
 }
 
@@ -487,7 +491,7 @@ private fun SupportThread(
 
 @Composable
 private fun ChatBubble(body: String, time: String, own: Boolean, festive: Boolean, selected: Boolean, onClick: (() -> Unit)?) {
-    val dark = LocalSiteDark.current
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val fill = when {
         festive && dark && own -> Color(0xFF302B50)
         festive && dark -> Color(0xFF1E3939)
