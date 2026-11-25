@@ -210,9 +210,11 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                 }
             }
         }
-        OutlinedTextField(search, { search = it; visibleCount = 30; selectedVariants = emptyMap() }, Modifier.fillMaxWidth(),
+        OutlinedTextField(search, { search = it; visibleCount = 30; selectedVariants = emptyMap() },
+            Modifier.fillMaxWidth().semantics { contentDescription = "Поиск товаров" },
             singleLine = true, shape = RoundedCornerShape(14.dp),
-            placeholder = { Text("Поиск по товарам") },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            placeholder = { Text("Оболочка, специи, нож…") },
             trailingIcon = { Text("⌕", color = SiteColors.Muted, fontSize = 22.sp) })
         val filtered = remember(data, category, search) { visibleStoreProducts(data.items("products"), category, search) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

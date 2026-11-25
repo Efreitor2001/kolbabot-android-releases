@@ -19,6 +19,7 @@ import androidx.compose.ui.zIndex
 import org.json.JSONObject
 
 internal class SiteChromeState {
+    var analyticsEnabled by mutableStateOf(false)
     var socialLinks by mutableStateOf<JSONObject?>(null)
     var cartCount by mutableIntStateOf(0)
     var openCartRequest by mutableIntStateOf(0)

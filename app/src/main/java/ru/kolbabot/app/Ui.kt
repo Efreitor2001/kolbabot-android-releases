@@ -127,6 +127,7 @@ private fun siteType(size: Int, height: Int, weight: FontWeight = FontWeight.Nor
         onBack?.let { TextButton(onClick = it, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) { Text("‹ Назад") } }
         SitePageHeading(title, subtitle, eyebrow, admin)
         content()
+        if (!admin && onBack == null) LocalSiteChrome.current?.let { chrome -> SiteFooter(chrome) }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -170,6 +171,29 @@ private fun SitePageHeading(title: String, subtitle: String, eyebrow: String, ad
         }
     } else Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp), content = text)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SiteFooter(chrome: SiteChromeState) {
+    val context = LocalContext.current
+    val muted = SiteColors.Muted
+    val linkColors = ButtonDefaults.textButtonColors(contentColor = muted)
+    FlowRow(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
+        listOf("Оферта" to "/public-offer", "Подписка" to "/subscription-agreement",
+            "Платёжные данные" to "/payment-credentials", "Персональные данные" to "/privacy-policy",
+            "Cookie" to "/cookie-policy", "Конфиденциальность Android" to "/android/privacy",
+            "obolo4ki@kolbabot.ru" to "mailto:obolo4ki@kolbabot.ru").forEach { (title, url) ->
+            TextButton({ openLink(context, url) }, colors = linkColors,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp)) {
+                Text(title, fontSize = 11.sp)
+            }
+        }
+        TextButton({ chrome.onNavigate("analytics") }, colors = linkColors,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 3.dp)) {
+            Text(if (chrome.analyticsEnabled) "Аналитика: включена" else "Аналитика: выключена", fontSize = 11.sp)
+        }
+    }
 }
 
 @Composable fun SectionCard(title: String = "", content: @Composable ColumnScope.() -> Unit) {

@@ -37,7 +37,10 @@ class SiteNavigationSmokeTest {
             compose.onNodeWithTag("site-bottom-$section").assertTextContains(labels[index]).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.left
         }
         assertEquals(positions.sorted(), positions)
-        listOf("≡", "∑", "•••").forEach { compose.onNodeWithText(it, substring = false).assertExists() }
+        listOf("store", "recipes", "custom", "account").forEach {
+            compose.onNodeWithTag("site-bottom-icon-$it", useUnmergedTree = true).assertExists()
+        }
+        compose.onNodeWithText("•••", substring = false).assertExists()
         compose.onNodeWithText("Знания").assertDoesNotExist()
         compose.onNodeWithTag("site-bottom-custom").performClick().assertIsSelected()
         compose.runOnIdle { assertEquals("custom", selected) }
@@ -141,6 +144,8 @@ private class NavigationFakeApi(context: Context, id: Long = 0, admin: Boolean =
                 JSONObject().put("user", if (userId > 0) JSONObject().put("id", userId).put("username", "Навигационный тест").put("is_admin", serverAdmin) else JSONObject.NULL)
             }
             "/api/access/status" -> { check(userId > 0); JSONObject().put("can_use_app", canUseApp) }
+            "/api/site/appearance" -> JSONObject().put("new_year_enabled", false)
+            "/api/bootstrap" -> JSONObject()
             "/api/store" -> JSONObject().put("products", JSONArray()).put("categories", JSONArray()).put("banners", JSONArray())
             "/api/handbook", "/api/articles", "/api/equipment", "/api/faq" -> JSONObject().put("items", JSONArray())
             else -> throw AssertionError("Unexpected GET $path")

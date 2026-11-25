@@ -89,6 +89,10 @@ import java.util.Locale
             profile = {
                 val current = identity.user!!
                 ErrorMessage(identity.error); ErrorMessage(error)
+                SectionCard("Цех на бумаге") {
+                    Text("Книга, калькулятор и финансовый план производства. После первой активации — доступ навсегда.")
+                    OutlinedButton({ NativeNavigation.requests.tryEmit(AppDestination("tseh")) }) { Text("Открыть Цех") }
+                }
                 AccountProfileDetails(api, current) {
                     val email = current.optString("email").takeUnless { it == "null" }.orEmpty()
                     if (email.isBlank() || !current.optBoolean("email_verified")) EmailScreen(api, current, onConfirmed = identity.refresh, embedded = true) {}
@@ -104,7 +108,7 @@ import java.util.Locale
                 }
             }, afterBilling = {
                 var connectionsExpanded by rememberSaveable { mutableStateOf(false) }
-                SiteDisclosure("Безопасность", connectionsExpanded, { connectionsExpanded = !connectionsExpanded },
+                SiteDisclosure("Способы входа", connectionsExpanded, { connectionsExpanded = !connectionsExpanded },
                     summary = "Google, VK ID, Mail.ru и Одноклассники могут вести в один кабинет.") {
                     LinkedAccountsScreen(api, identity.user!!, {}, embedded = true)
                     Button(enabled = !busy, onClick = { revokeSessionsConfirmation = true },
@@ -117,10 +121,6 @@ import java.util.Locale
                     AccountOrdersInline(api) { selectedAccountOrder = it; route = "orders" }
                 }
             }, footer = {
-                SectionCard("Цех на бумаге") {
-                    Text("Книга, калькулятор и финансовый план производства. После первой активации — доступ навсегда.")
-                    OutlinedButton({ NativeNavigation.requests.tryEmit(AppDestination("tseh")) }) { Text("Открыть Цех") }
-                }
                 NotificationPreferences(api)
                 AccountLink("Уведомления", "Сообщения и изменения заказов") { route = "notifications" }
                 SectionCard("О приложении") {

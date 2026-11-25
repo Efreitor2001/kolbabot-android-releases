@@ -45,7 +45,6 @@ internal val siteMoreNavigation = listOf(
     SiteNavigationItem("faq", "FAQ"),
     SiteNavigationItem("support", "Поддержка"),
     SiteNavigationItem("account", "Кабинет"),
-    SiteNavigationItem("analytics", "Статистика посещений"),
 )
 
 @Composable internal fun SiteBottomNavigation(section: String, moreOpen: Boolean, onSelect: (String) -> Unit) {
@@ -64,10 +63,10 @@ internal val siteMoreNavigation = listOf(
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                       Box(Modifier.heightIn(min = 24.dp), contentAlignment = Alignment.Center) {
                     when (item.section) {
-                        "store" -> Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(24.dp), tint = color)
-                        "account" -> Icon(painterResource(R.drawable.site_nav_account), null, Modifier.size(22.dp), tint = color)
-                        "recipes" -> Icon(painterResource(R.drawable.site_section_recipes), null, Modifier.size(22.dp), tint = color)
-                        "custom" -> Icon(painterResource(R.drawable.site_section_custom), null, Modifier.size(22.dp), tint = color)
+                        "store" -> Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "account" -> Icon(painterResource(R.drawable.site_nav_account), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "recipes" -> Icon(painterResource(R.drawable.site_section_recipes), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "custom" -> Icon(painterResource(R.drawable.site_section_custom), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
                         else -> Text(item.symbol, color = color, fontSize = 23.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
                     }
                       }

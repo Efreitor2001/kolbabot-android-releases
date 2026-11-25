@@ -178,7 +178,7 @@ private class AccessFakeApi(context: Context, id: Long, admin: Boolean) : ApiCli
             path == "/api/store/cart" -> JSONObject().put("rewards", JSONObject().put("sausages_kopecks", 0))
             path == "/api/account/billing" -> JSONObject().put("tier", "none").put("status", "inactive")
             path == "/api/bootstrap" -> JSONObject().put("payments", JSONObject().put("enabled", false))
-            path == "/api/admin/dashboard" -> { check(serverAdmin); JSONObject() }
+            path in setOf("/api/admin/dashboard", "/api/admin/analytics") -> { check(serverAdmin); JSONObject() }
             path.startsWith("/api/admin/users?") -> { check(serverAdmin); JSONObject().put("items", JSONArray()) }
             else -> throw AssertionError("Unexpected GET $path")
         }

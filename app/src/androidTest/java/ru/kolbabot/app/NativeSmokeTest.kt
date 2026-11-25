@@ -266,6 +266,8 @@ private class FakeApi(context: Context) : ApiClient(context, "https://native-smo
             "/api/access/status" -> JSONObject().put("can_use_app", true)
             "/api/bootstrap" -> JSONObject("""{"categories_count":1,"equipment_count":0,"faq_count":0,"handbook_sections":[],"payments":{"plans":[]}}""")
             "/api/account/billing" -> JSONObject("""{"status":"none","tier":"free","autopay_enabled":false}""")
+            "/api/site/appearance" -> JSONObject().put("new_year_enabled", false)
+            "/api/admin/analytics" -> JSONObject()
             "/api/admin/dashboard" -> JSONObject("""{"kpi":{},"recent_orders":[],"sales_daily":[],"open_tickets":[],"latest_users":[]}""")
             "/api/auth/me" -> JSONObject("""{"user":{"id":7,"username":"Тестовый профиль","is_admin":true,"requires_pd_consent":false},"csrf_token":"smoke-csrf-token"}""")
             "/api/store", "/api/store?include_inactive=1" -> catalog()

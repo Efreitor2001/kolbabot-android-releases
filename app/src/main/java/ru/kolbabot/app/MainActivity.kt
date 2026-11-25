@@ -122,6 +122,7 @@ class MainActivity : ComponentActivity() {
     LaunchedEffect(api) { NativeNavigation.requests.collect { navigate(it) } }
     SideEffect {
         chrome.user = user
+        chrome.analyticsEnabled = analyticsConsent == AnalyticsConsent.GRANTED
         chrome.socialLinks = socialLinks
         chrome.onAccount = { navigate(AppDestination("account")) }
         chrome.onCart = { chrome.openCartRequest++; navigate(AppDestination("store")) }

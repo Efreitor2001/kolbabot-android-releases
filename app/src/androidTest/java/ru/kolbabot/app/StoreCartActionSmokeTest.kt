@@ -45,7 +45,9 @@ class StoreCartActionSmokeTest {
         compose.onNode(hasContentDescription("Увеличить количество") and hasAnyAncestor(hasTestTag("store-quantity-101")))
             .performClick()
         compose.onNodeWithTag("store-quantity-input-101").assertTextEquals("2")
+        compose.onNode(hasText("Корзина") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("2 шт.").assertExists()
+        compose.onNodeWithContentDescription("Закрыть корзину").performClick()
 
         compose.runOnIdle { api.failWrites = true }
         compose.onNodeWithTag("store-quantity-input-101").performTextReplacement("10")
@@ -72,7 +74,7 @@ class StoreCartActionSmokeTest {
         compose.runOnIdle {
             assertEquals(mapOf(102L to 1), api.quantities)
         }
-        compose.onNode(hasSetTextAction() and hasText("Поиск")).performScrollTo().performTextReplacement("80 мм")
+        compose.onNode(hasSetTextAction() and hasContentDescription("Поиск товаров")).performScrollTo().performTextReplacement("80 мм")
         compose.onNodeWithTag("store-quantity-input-102").assertTextEquals("1")
         compose.onNodeWithTag("store-product-101").assertDoesNotExist()
     }
