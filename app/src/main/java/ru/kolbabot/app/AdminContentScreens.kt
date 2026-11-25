@@ -473,6 +473,8 @@ private fun AcArticleTextEditor(api: ApiClient, html: String, enabled: Boolean, 
             }
         }) { Text("Без оформления") }
     }
+    val editorSurface = SiteColors.Surface.toArgb()
+    val editorBorder = SiteColors.Border.toArgb()
     AndroidView(factory = { nativeContext ->
         EditText(nativeContext).apply {
             minLines = 10; textSize = 16f; gravity = android.view.Gravity.TOP
@@ -483,9 +485,9 @@ private fun AcArticleTextEditor(api: ApiClient, html: String, enabled: Boolean, 
             val inset = (16 * density).toInt()
             setPadding(inset, inset, inset, inset)
             background = GradientDrawable().apply {
-                setColor(android.graphics.Color.WHITE)
+                setColor(editorSurface)
                 cornerRadius = 12 * density
-                setStroke(density.toInt().coerceAtLeast(1), SiteColors.Border.toArgb())
+                setStroke(density.toInt().coerceAtLeast(1), editorBorder)
             }
             backgroundTintList = null
             setSingleLine(false); setTextColor(foreground)

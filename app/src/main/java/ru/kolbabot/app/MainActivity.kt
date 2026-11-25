@@ -17,6 +17,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
 
 class MainActivity : ComponentActivity() {
@@ -53,6 +57,31 @@ class MainActivity : ComponentActivity() {
     var revision by remember { mutableIntStateOf(0) }
     val expiry by api.sessionExpiry.collectAsState()
     val screens = rememberSaveableStateHolder()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var newYear by remember(api) { mutableStateOf(false) }
+    var appearanceRevision by remember { mutableIntStateOf(0) }
+    val siteHero = rememberSiteImage("${api.baseUrl}/site-hero?v=$appearanceRevision")
+    var socialLinks by remember(api) { mutableStateOf<JSONObject?>(null) }
+    LaunchedEffect(api, appearanceRevision) {
+        try { socialLinks = api.get("/api/bootstrap").optJSONObject("site_social_links") }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* The site may have no published social links. */ }
+    }
+    LaunchedEffect(api, lifecycle, appearanceRevision) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                try {
+                    api.get("/api/site/appearance").let { if (it.has("new_year_enabled")) newYear = it.getBoolean("new_year_enabled") }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Preserve the server's last setting during an outage.
+                }
+                delay(60_000)
+            }
+        }
+    }
+    var afterSignIn by rememberSaveable { mutableStateOf("") }
     var pendingProduct by rememberSaveable { mutableLongStateOf(0) }
     var pendingArticle by rememberSaveable { mutableLongStateOf(0) }
     var pendingOrder by rememberSaveable { mutableStateOf("") }
@@ -65,14 +94,16 @@ class MainActivity : ComponentActivity() {
     var adminReturnSection by rememberSaveable { mutableStateOf("store") }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    LaunchedEffect(context, newYear, siteHero) { (context as? android.app.Activity)?.setFestiveTaskIcon(newYear, siteHero) }
     val chrome = remember { SiteChromeState() }
     fun leaveAdmin() {
-        tab = adminReturnTab.takeIf { it in 0..4 } ?: 0
+        tab = adminReturnTab.takeIf { it in 0..6 && it != 5 } ?: 0
         selectedSection = adminReturnSection.takeUnless { it == "admin" }.orEmpty().ifBlank { "store" }
         pendingSection = ""; pendingProduct = 0; pendingArticle = 0; pendingOrder = ""
     }
     fun navigate(destination: AppDestination) {
         moreOpen = false
+        if (destination.section != "account") afterSignIn = ""
         if (destination.section == "analytics") { analyticsPreferences = true; return }
         if (destination.section == "admin" && tab != 5) {
             adminReturnTab = tab
@@ -85,12 +116,14 @@ class MainActivity : ComponentActivity() {
         pendingSection = destination.section.takeUnless { it == "admin" }.orEmpty()
         tab = when (destination.section) {
             "recipes" -> 1; "handbook", "articles", "equipment", "faq" -> 2
-            "custom" -> 3; "admin" -> 5; "account", "support", "notifications", "orders", "paywall" -> 4; else -> 0
+            "custom" -> 3; "admin" -> 5; "tseh" -> 6; "account", "support", "notifications", "orders", "paywall" -> 4; else -> 0
         }
     }
     LaunchedEffect(api) { NativeNavigation.requests.collect { navigate(it) } }
     SideEffect {
         chrome.user = user
+        chrome.analyticsEnabled = analyticsConsent == AnalyticsConsent.GRANTED
+        chrome.socialLinks = socialLinks
         chrome.onAccount = { navigate(AppDestination("account")) }
         chrome.onCart = { chrome.openCartRequest++; navigate(AppDestination("store")) }
         chrome.onNotifications = { navigate(AppDestination("notifications")) }
@@ -141,56 +174,79 @@ class MainActivity : ComponentActivity() {
     }
     BackHandler(tab != 0) {
         if (tab == 5) leaveAdmin() else {
-            tab = 0; selectedSection = "store"
+            tab = 0; selectedSection = "store"; afterSignIn = ""
             pendingSection = ""; pendingProduct = 0; pendingArticle = 0; pendingOrder = ""
         }
     }
-    Scaffold(bottomBar = {
-        Column {
-        if (!checking && tab != 5 && analyticsConsent == AnalyticsConsent.UNDECIDED) AnalyticsConsentCard(api)
-        if (tab != 5 && (checking || user != null || tab != 4)) {
-        SiteBottomNavigation(selectedSection, moreOpen) { section ->
-            if (section == "more") moreOpen = true else {
-                moreOpen = false
-                selectedSection = section
-                pendingSection = ""; pendingProduct = 0; pendingArticle = 0; pendingOrder = ""
-                // Preserve each native screen's saved draft when using the bottom bar.
-                tab = when (section) { "recipes" -> 1; "custom" -> 3; "account" -> 4; else -> 0 }
+    CompositionLocalProvider(LocalNewYear provides newYear, LocalSiteHero provides siteHero,
+        LocalRefreshAppearance provides { appearanceRevision++ }) {
+        Scaffold(bottomBar = {
+            Column {
+            if (!checking && tab !in setOf(5, 6) && analyticsConsent == AnalyticsConsent.UNDECIDED) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp), contentAlignment = Alignment.Center) {
+                    AnalyticsConsentCard(api, Modifier.widthIn(max = 420.dp))
+                }
+            }
+            if (tab !in setOf(5, 6) && (checking || user != null || tab != 4)) {
+            SiteBottomNavigation(selectedSection, moreOpen) { section ->
+                if (section == "more") moreOpen = true else {
+                    moreOpen = false
+                    selectedSection = section
+                    pendingSection = ""; pendingProduct = 0; pendingArticle = 0; pendingOrder = ""
+                    // Preserve each native screen's saved draft when using the bottom bar.
+                    tab = when (section) { "recipes" -> 1; "custom" -> 3; "account" -> 4; else -> 0 }
+                }
+            }
+            }
+            }
+        }) { insets ->
+            Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
+                Box(Modifier.widthIn(max = 900.dp).fillMaxSize()) {
+                  screens.SaveableStateProvider("${user?.optLong("id") ?: 0}_$tab") {
+                    CompositionLocalProvider(LocalSiteChrome provides chrome.takeUnless { tab == 4 && user == null }) {
+                    when {
+                        checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        user?.optBoolean("requires_pd_consent") == true -> ConsentScreen(api) { revision++ }
+                        tab == 0 -> StoreScreen(api, pendingProduct, { pendingProduct = 0 },
+                                    onCheckoutLogin = { afterSignIn = "cart"; navigate(AppDestination("account")) },
+                                    onNavigate = { navigate(AppDestination(it)) })
+                        tab == 1 -> RecipesScreen(api, onOpenProduct = { navigate(AppDestination("store", productId = it)) })
+                        tab == 2 -> KnowledgeScreen(api, onOpenAccount = { navigate(AppDestination("account")) },
+                            initialArticleId = pendingArticle, onArticleOpened = { pendingArticle = 0 }, initialSection = pendingSection, onSectionOpened = { pendingSection = "" },
+                            onSectionChanged = { selectedSection = it })
+                        tab == 3 -> CustomCalculatorScreen(api)
+                        tab == 6 -> TsehScreen(api, user?.optLong("id") ?: 0L,
+                            onStore = { productId -> navigate(AppDestination("store", productId = productId)) },
+                            onSignIn = { afterSignIn = "tseh"; navigate(AppDestination("account")) },
+                            onSupport = { navigate(AppDestination("support")) })
+                        user == null -> AuthScreen(api) {
+                            user = it
+                            revision++
+                            val next = afterSignIn
+                            afterSignIn = ""
+                            when (next) {
+                                "tseh" -> navigate(AppDestination("tseh"))
+                                "cart" -> chrome.onCart()
+                            }
+                        }
+                        tab == 5 -> AdminScreen(api, ::leaveAdmin)
+                        else -> AccountScreen(api, user!!, openNotifications || pendingSection == "notifications", {
+                            pendingSection = ""; onNotificationsOpened()
+                        }, initialSection = pendingSection, onSectionOpened = { pendingSection = "" }, initialOrderId = pendingOrder,
+                            onOrderOpened = { pendingOrder = "" }, onSectionChanged = { selectedSection = it }) { user = null; verifiedPushUserId = 0; revision++ }
+                    }
+                    }
+                  }
+                }
+                if (newYear) FestiveSnow(Modifier.matchParentSize())
             }
         }
-        }
-        }
-    }) { insets ->
-        Box(Modifier.fillMaxSize().padding(insets).imePadding(), contentAlignment = Alignment.TopCenter) {
-            Box(Modifier.widthIn(max = 900.dp).fillMaxSize()) {
-              screens.SaveableStateProvider("${user?.optLong("id") ?: 0}_$tab") {
-                CompositionLocalProvider(LocalSiteChrome provides chrome.takeUnless { tab == 4 && user == null }) {
-                when {
-                    checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                    user?.optBoolean("requires_pd_consent") == true -> ConsentScreen(api) { revision++ }
-                    tab == 0 -> StoreScreen(api, pendingProduct, { pendingProduct = 0 }) { section -> navigate(AppDestination(section)) }
-                    tab == 1 -> RecipesScreen(api, onOpenProduct = { navigate(AppDestination("store", productId = it)) })
-                    tab == 2 -> KnowledgeScreen(api, onOpenAccount = { navigate(AppDestination("account")) },
-                        initialArticleId = pendingArticle, onArticleOpened = { pendingArticle = 0 }, initialSection = pendingSection, onSectionOpened = { pendingSection = "" },
-                        onSectionChanged = { selectedSection = it })
-                    tab == 3 -> CustomCalculatorScreen(api)
-                    user == null -> AuthScreen(api) { user = it; revision++ }
-                    tab == 5 -> AdminScreen(api, ::leaveAdmin)
-                    else -> AccountScreen(api, user!!, openNotifications || pendingSection == "notifications", {
-                        pendingSection = ""; onNotificationsOpened()
-                    }, initialSection = pendingSection, onSectionOpened = { pendingSection = "" }, initialOrderId = pendingOrder,
-                        onOrderOpened = { pendingOrder = "" }, onSectionChanged = { selectedSection = it }) { user = null; verifiedPushUserId = 0; revision++ }
-                }
-                }
-              }
-            }
-        }
+        if (moreOpen) SiteNavigationSheet(api, user?.optLong("id") ?: 0L, selectedSection,
+            onDismiss = { moreOpen = false }, onSelect = { navigate(AppDestination(it)) })
+        if (enablePushStartup) NotificationStartup(api, if (checking) 0 else verifiedPushUserId)
+        VisitorAnalyticsLifecycle(api, !checking && tab != 5 && selectedSection != "admin", revision)
+        if (analyticsPreferences) AlertDialog(onDismissRequest = { analyticsPreferences = false },
+            text = { AnalyticsConsentCard(api) { analyticsPreferences = false } },
+            confirmButton = { TextButton(onClick = { analyticsPreferences = false }) { Text("Закрыть") } })
     }
-    if (moreOpen) SiteNavigationSheet(api, user?.optLong("id") ?: 0L, selectedSection,
-        onDismiss = { moreOpen = false }, onSelect = { navigate(AppDestination(it)) })
-    if (enablePushStartup) NotificationStartup(api, if (checking) 0 else verifiedPushUserId)
-    VisitorAnalyticsLifecycle(api, !checking && tab != 5 && selectedSection != "admin", revision)
-    if (analyticsPreferences) AlertDialog(onDismissRequest = { analyticsPreferences = false },
-        text = { AnalyticsConsentCard(api) { analyticsPreferences = false } },
-        confirmButton = { TextButton(onClick = { analyticsPreferences = false }) { Text("Закрыть") } })
 }

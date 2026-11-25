@@ -63,7 +63,7 @@ fun AccountProfileDetails(api: ApiClient, user: JSONObject, content: @Composable
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = RoundedCornerShape(20.dp), color = Color.Transparent,
                 border = BorderStroke(1.dp, SiteColors.Brand.copy(alpha = 0.14f))) {
-                Box(Modifier.size(62.dp).background(Brush.linearGradient(listOf(SiteColors.Brand.copy(alpha = 0.14f), SiteColors.Brand2.copy(alpha = 0.11f)))),
+                Box(Modifier.size(62.dp).background(SiteColors.AccentSoft),
                     contentAlignment = Alignment.Center) {
                     Text(initials, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = SiteColors.Brand)
                 }

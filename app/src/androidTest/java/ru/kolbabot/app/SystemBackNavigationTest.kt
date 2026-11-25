@@ -1,6 +1,7 @@
 package ru.kolbabot.app
 
 import android.content.Context
+import android.view.KeyEvent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -65,9 +66,10 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Редактор баннеров").assertDoesNotExist()
         compose.onNodeWithTag("site-bottom-more").performClick()
         compose.onNodeWithTag("site-more-admin").performScrollTo().performClick()
-        compose.onNodeWithText("Админ-редактор").assertExists()
+        compose.onNodeWithTag("admin-menu-open").assertExists()
         compose.onNodeWithText("Рады вас видеть,", substring = true).assertDoesNotExist()
         compose.onNodeWithTag("site-bottom-more").assertDoesNotExist()
+        compose.onNodeWithTag("admin-menu-open").performClick()
         compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
         compose.onNodeWithTag("admin-user-picker").performScrollTo().performClick()
         compose.onNodeWithTag("admin-user-picker-search").performTextInput("никого")
@@ -81,11 +83,11 @@ class SystemBackNavigationTest {
         compose.onNodeWithTag("admin-user-picker").assertExists()
         compose.onNodeWithText("Сохранить пользователя").assertExists()
         pressBack()
-        compose.onNodeWithText("Админ-редактор").assertExists()
+        compose.onNodeWithTag("admin-menu-open").assertExists()
         pressBack()
         compose.onNodeWithText("Рады вас видеть,", substring = true).assertExists()
         compose.onNodeWithTag("site-bottom-account").assertIsSelected()
-        compose.onNodeWithText("Админ-редактор").assertDoesNotExist()
+        compose.onNodeWithTag("admin-menu-open").assertDoesNotExist()
         assertTrue(api.reads.any { it.startsWith("/api/admin/users?") })
     }
 
@@ -94,7 +96,7 @@ class SystemBackNavigationTest {
         compose.setContent { KolbaTheme { KolbaApp(api, incomingLink = "https://back-smoke.invalid/admin", enablePushStartup = false) } }
         compose.waitUntil { api.reads.count { it == "/api/auth/me" } >= 2 }
         compose.onNodeWithTag("site-bottom-store").assertIsSelected()
-        compose.onNodeWithText("Админ-редактор").assertDoesNotExist()
+        compose.onNodeWithTag("admin-menu-open").assertDoesNotExist()
         assertTrue(api.reads.none { it.startsWith("/api/admin/") })
     }
 
@@ -118,7 +120,7 @@ class SystemBackNavigationTest {
         closeSoftKeyboard()
         pressBack()
         compose.onNodeWithText("Оставить изменения несохранёнными?").assertIsDisplayed()
-        pressBack()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithText("Оставить изменения несохранёнными?").assertDoesNotExist()
         compose.onNodeWithText("Изменённое").assertExists()
         compose.runOnIdle { assertFalse(closed) }
@@ -173,7 +175,8 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
             path == "/api/notifications" -> JSONObject().put("items", JSONArray()).put("unread_count", 0)
             path == "/api/account/billing" -> JSONObject().put("tier", "none").put("status", "inactive")
             path == "/api/bootstrap" -> JSONObject().put("payments", JSONObject().put("enabled", false))
-            path == "/api/admin/dashboard" -> { check(admin); JSONObject() }
+            path == "/api/site/appearance" -> JSONObject().put("new_year_enabled", false)
+            path in setOf("/api/admin/dashboard", "/api/admin/analytics") -> { check(admin); JSONObject() }
             path.startsWith("/api/admin/users?") -> { check(admin); JSONObject().put("items", JSONArray().put(listedUser())) }
             path == "/api/admin/users/44/dossier" -> { check(admin); JSONObject().put("tables", JSONArray().put(
                 JSONObject().put("table", "miniapp_users").put("rows", JSONArray().put(listedUser())))) }

@@ -20,6 +20,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -30,16 +31,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
@@ -222,9 +219,9 @@ import androidx.compose.ui.unit.sp
                 }
                 OutlinedButton(onClick = { startQuickSignIn("google") }, enabled = !busy,
                     modifier = Modifier.fillMaxWidth().testTag("auth-google"),
-                    shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFF1D2A4E).copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, SiteColors.Border),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp), colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = Color.White, contentColor = Color(0xFF1F1F1F))) {
+                        containerColor = SiteColors.Surface, contentColor = SiteColors.Ink)) {
                     Image(painterResource(R.drawable.sign_in_google), null, Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp)); Text("Войти через Google", fontWeight = FontWeight.Medium,
                         fontFamily = FontFamily.SansSerif, fontSize = 14.sp, letterSpacing = 0.25.sp)
@@ -246,9 +243,9 @@ import androidx.compose.ui.unit.sp
         }
         if (mode == "login") Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HorizontalDivider(Modifier.weight(1f), color = Color(0xFF1D2A4E).copy(alpha = 0.09f))
-            Text("ИЛИ ПО ЛОГИНУ И ПАРОЛЮ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF8A92A2))
-            HorizontalDivider(Modifier.weight(1f), color = Color(0xFF1D2A4E).copy(alpha = 0.09f))
+            HorizontalDivider(Modifier.weight(1f), color = SiteColors.Border)
+            Text("ИЛИ ПО ЛОГИНУ И ПАРОЛЮ", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SiteColors.Muted)
+            HorizontalDivider(Modifier.weight(1f), color = SiteColors.Border)
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (mode in listOf("login", "register", "register_code")) OutlinedTextField(username, { username = it }, enabled = !busy, label = { Text("Логин") }, placeholder = { Text(if (mode == "login") "Ваш логин" else "Как к вам обращаться") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -290,15 +287,15 @@ import androidx.compose.ui.unit.sp
 }
 
 @Composable private fun AuthResult(message: String, isError: Boolean) {
-    val accent = if (isError) Color(0xFFC12525) else SiteColors.Brand
+    val accent = if (isError) SiteColors.Error else SiteColors.Brand
     Surface(Modifier.fillMaxWidth().heightIn(min = 43.dp), shape = RoundedCornerShape(13.dp),
         color = accent.copy(alpha = if (isError) .05f else .045f), border = BorderStroke(1.dp, accent.copy(alpha = if (isError) .16f else .1f))) {
         Row(Modifier.padding(horizontal = 13.dp, vertical = 11.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Surface(Modifier.size(17.dp), shape = RoundedCornerShape(50), color = accent.copy(alpha = .12f)) {
                 Box(contentAlignment = Alignment.Center) { Text(if (isError) "!" else "i", color = accent,
-                    fontFamily = FontFamily.Serif, fontWeight = FontWeight.Black, fontSize = 11.sp, lineHeight = 17.sp) }
+                    fontWeight = FontWeight.Black, fontSize = 11.sp, lineHeight = 17.sp) }
             }
-            Text(message, fontSize = 11.sp, lineHeight = 15.95.sp, color = if (isError) accent else Color(0xFF657084), modifier = Modifier.weight(1f))
+            Text(message, fontSize = 11.sp, lineHeight = 15.95.sp, color = if (isError) accent else SiteColors.Muted, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -307,48 +304,51 @@ import androidx.compose.ui.unit.sp
 @Composable private fun AuthLayout(title: String, subtitle: String, mode: String, enabled: Boolean,
     onMode: (String) -> Unit, content: @Composable ColumnScope.() -> Unit) {
     val selected = when (mode) { "register", "register_code" -> "register"; "reset", "reset_code" -> "reset"; else -> "login" }
-    Column(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFFF8F9FC), Color(0xFFF2F1EC))))
-        .verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Surface(Modifier.fillMaxWidth(), color = Color.Transparent, shape = RoundedCornerShape(22.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = .3f)), shadowElevation = 10.dp) {
-            Column(Modifier.authBrandBackground()
-                .heightIn(min = 150.dp).padding(19.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                    Surface(Modifier.size(36.dp), color = Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))) {
-                        Box(contentAlignment = Alignment.Center) { Text("К", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) }
-                    }
-                    Text("Колбабот", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+    Column(Modifier.fillMaxSize().background(SiteColors.BackgroundTop)
+        .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp)) {
+        FestiveHeader {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.weight(1f).clickable { NativeNavigation.requests.tryEmit(AppDestination("store")) },
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SiteMascot(40.dp)
+                    Text("Колбабот", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
                 }
-                Text("Домашнее производство — увереннее", fontSize = 24.8.sp, lineHeight = 26.78.sp, letterSpacing = (-.62).sp,
-                    fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, color = Color.White,
-                    modifier = Modifier.widthIn(max = 310.dp))
+                SiteThemeButton(bordered = true)
             }
         }
-        Surface(Modifier.fillMaxWidth(), color = Color.White.copy(alpha = 0.96f), contentColor = SiteColors.Ink,
-            shape = RoundedCornerShape(22.dp), shadowElevation = 4.dp, border = BorderStroke(1.dp, Color(0xFF202B48).copy(alpha = 0.1f))) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Surface(Modifier.fillMaxWidth(), color = SiteColors.Surface, contentColor = SiteColors.Ink,
+            shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, SiteColors.Border)) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column {
                     Text(when(selected) { "register" -> "НОВЫЙ АККАУНТ"; "reset" -> "ВОССТАНОВЛЕНИЕ"; else -> "ЛИЧНЫЙ КАБИНЕТ" },
                         fontSize = 12.sp, lineHeight = 16.8.sp, fontWeight = FontWeight.Bold, letterSpacing = .96.sp, color = SiteColors.Brand)
                     Spacer(Modifier.height(5.dp))
                     Text(title, fontSize = 24.8.sp, lineHeight = 28.52.sp, letterSpacing = .248.sp,
-                        fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif, color = SiteColors.Ink)
+                        fontWeight = FontWeight.ExtraBold, color = SiteColors.Ink)
                     Spacer(Modifier.height(8.dp))
                     Text(subtitle, fontSize = 13.sp, lineHeight = 20.15.sp, color = SiteColors.Muted)
                 }
-                Surface(color = Color(0xFFF2F4F8), shape = RoundedCornerShape(15.dp),
-                    border = BorderStroke(1.dp, Color(0xFF1D2A4E).copy(alpha = 0.07f))) {
-                    Row(Modifier.fillMaxWidth().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        listOf("login" to "Вход", "register" to "Регистрация", "reset" to "Восстановление").forEach { (key, caption) ->
-                            Surface(Modifier.weight(1f).testTag("auth-tab-$key").selectable(selected == key, enabled,
-                                role = Role.Tab, onClick = { onMode(key) }),
-                                shape = RoundedCornerShape(11.dp), color = if (selected == key) Color.White else Color.Transparent,
-                                border = if (selected == key) BorderStroke(1.dp, SiteColors.Brand.copy(alpha = 0.08f)) else null) {
-                                Box(Modifier.heightIn(min = 42.dp).padding(horizontal = 4.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
-                                    Text(caption, fontSize = 10.sp, lineHeight = 14.sp, fontWeight = FontWeight.ExtraBold,
-                                        textAlign = TextAlign.Center, color = if (selected == key) SiteColors.Brand else Color(0xFF687286))
+                Surface(color = SiteColors.Soft, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, SiteColors.Border)) {
+                    val compact = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp <= 360
+                    val modes = listOf("login" to "Вход", "register" to "Регистрация", "reset" to "Восстановление")
+                    Column(Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        modes.chunked(if (compact) 2 else 3).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                row.forEach { (key, caption) ->
+                                    Surface(Modifier.weight(if (compact) 1f else when (key) {
+                                        "login" -> .7f; "register" -> 1f; else -> 1.3f
+                                    }).testTag("auth-tab-$key").selectable(selected == key, enabled,
+                                        role = Role.Tab, onClick = { onMode(key) }),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (selected == key) SiteColors.Action else Color.Transparent) {
+                                        Box(Modifier.heightIn(min = (if (compact && key == "reset") 34 else 38).dp)
+                                            .padding(horizontal = 3.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                            Text(caption, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center, color = if (selected == key) Color.White else SiteColors.Muted)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -361,24 +361,6 @@ import androidx.compose.ui.unit.sp
     }
 }
 
-/** The same three CSS gradients and three decorative rings as auth-brand-panel. */
-private fun Modifier.authBrandBackground() = drawWithCache {
-    val base = Brush.linearGradient(0f to Color(0xFF365BD0), .58f to Color(0xFF6550D4), 1f to Color(0xFF187F72))
-    val light = Brush.radialGradient(listOf(Color.White.copy(alpha = .22f), Color.Transparent),
-        center = Offset(size.width * .85f, size.height * .08f), radius = size.width * .32f)
-    val green = Brush.radialGradient(listOf(Color(0xFF1B937C).copy(alpha = .5f), Color.Transparent),
-        center = Offset(size.width * .12f, size.height * .88f), radius = size.width * .4f)
-    onDrawBehind {
-        drawRect(base); drawRect(green); drawRect(light)
-        val ring = Color.White.copy(alpha = .16f)
-        drawCircle(ring, 145.dp.toPx(), Offset(size.width - 50.dp.toPx(), 40.dp.toPx()), style = Stroke(1.dp.toPx()))
-        drawCircle(ring, 77.5.dp.toPx(), Offset(size.width - 52.5.dp.toPx(), size.height - 157.5.dp.toPx()), style = Stroke(1.dp.toPx()))
-        val glowCenter = Offset(15.dp.toPx(), size.height * .28f + 105.dp.toPx())
-        drawCircle(Color.White.copy(alpha = .04f), 105.dp.toPx(), glowCenter)
-        drawCircle(ring, 105.dp.toPx(), glowCenter, style = Stroke(1.dp.toPx()))
-    }
-}
-
 @Composable private fun AuthQuickPanel(content: @Composable ColumnScope.() -> Unit) {
     Surface(shape = RoundedCornerShape(16.dp), color = Color.Transparent,
         border = BorderStroke(1.dp, SiteColors.Brand.copy(alpha = 0.1f))) {
@@ -388,8 +370,8 @@ private fun Modifier.authBrandBackground() = drawWithCache {
 }
 
 @Composable private fun AuthConsents(content: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = Color.White.copy(alpha = 0.78f),
-        border = BorderStroke(1.dp, Color(0xFF1D2A4E).copy(alpha = 0.07f))) {
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = SiteColors.Soft,
+        border = BorderStroke(1.dp, SiteColors.Border)) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = content)
     }
 }
@@ -409,10 +391,10 @@ private fun Modifier.authBrandBackground() = drawWithCache {
         verticalAlignment = Alignment.Top) {
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
             Checkbox(checked, onChecked, modifier = Modifier.size(20.dp).testTag(tag),
-                colors = CheckboxDefaults.colors(checkedColor = SiteColors.Accent, uncheckedColor = Color(0xFF87909F)))
+                colors = CheckboxDefaults.colors(checkedColor = SiteColors.Accent, uncheckedColor = SiteColors.Muted))
         }
         Text(text, fontSize = 10.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium,
-            letterSpacing = 0.sp, color = Color(0xFF505C70), modifier = Modifier.weight(1f))
+            letterSpacing = 0.sp, color = SiteColors.Ink, modifier = Modifier.weight(1f))
     }
 }
 

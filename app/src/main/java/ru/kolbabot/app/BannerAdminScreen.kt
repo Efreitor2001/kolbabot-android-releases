@@ -188,8 +188,7 @@ fun AdminBannersScreen(api: ApiClient, onBack: (() -> Unit)? = null) {
                         Text("Предпросмотр", style = MaterialTheme.typography.titleSmall)
                         // Keep .admin-banner-preview's green/amber treatment from styles.css.
                         Surface(color = Color.Transparent, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                            Column(Modifier.background(Brush.linearGradient(listOf(
-                                SiteColors.Accent.copy(alpha = 0.13f), Color(0xFFFFB74D).copy(alpha = 0.14f))))
+                            Column(Modifier.background(SiteColors.SuccessSoft)
                                 .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (item.optString("image_url").isNotBlank()) NetworkImage(runCatching { URI(api.baseUrl).resolve(item.optString("image_url")).toString() }.getOrDefault(""), item.optString("title"),
                                     Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp)))

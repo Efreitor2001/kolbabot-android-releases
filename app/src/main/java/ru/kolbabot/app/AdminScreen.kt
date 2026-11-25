@@ -46,19 +46,8 @@ import org.json.JSONObject
     val holder = rememberSaveableStateHolder()
     val back = { section = "dashboard" }
     BackHandler(section != "dashboard") { back() }
-    val sections = listOf("dashboard" to "Дашборд", "catalog" to "Каталог", "handbook" to "Справочник",
-        "articles" to "Статьи", "recipes" to "Рецепты", "faq" to "FAQ", "equipment" to "Оборудование",
-        "store" to "Магазин", "carts" to "Корзины", "orders" to "Заказы", "reviews" to "Отзывы",
-        "support" to "Поддержка", "notifications" to "Оповещения", "users" to "Пользователи",
-        "db" to "БД", "security" to "Безопасность", "tools" to "Инструменты")
     val siteChrome = LocalSiteChrome.current
-    var bootstrap by remember(api) { mutableStateOf<JSONObject?>(null) }
-    LaunchedEffect(api) {
-        try { bootstrap = api.get("/api/bootstrap") }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { /* Counts remain unavailable; section requests report their own failures. */ }
-    }
-    val chrome: @Composable () -> Unit = { AdminChrome(user, bootstrap, siteChrome, section, sections) { section = it } }
+    val chrome: @Composable () -> Unit = { AdminChrome(user, siteChrome, section, onBack) { section = it } }
     CompositionLocalProvider(LocalAdminChrome provides chrome) {
         holder.SaveableStateProvider(section) {
         when (section) {

@@ -42,7 +42,7 @@ class VisitorAnalyticsSmokeTest {
             VisitorAnalyticsLifecycle(api, active = true, identityRevision = 0)
         } }
         compose.onNodeWithText("Разрешить").assertIsDisplayed()
-        compose.onNodeWithText("Отказаться").assertIsDisplayed()
+        compose.onNodeWithText("Без аналитики").assertIsDisplayed()
         screenshot("consent")
         compose.runOnIdle {
             assertEquals(0, api.visits)
@@ -64,7 +64,7 @@ class VisitorAnalyticsSmokeTest {
             AnalyticsConsentCard(api)
             VisitorAnalyticsLifecycle(api, active = true, identityRevision = 0)
         } }
-        compose.onNodeWithText("Отказаться").performClick()
+        compose.onNodeWithText("Без аналитики").performClick()
         compose.runOnIdle {
             assertEquals(0, api.visits)
             assertEquals(AnalyticsConsent.DENIED, VisitorAnalytics(context).consent.value)

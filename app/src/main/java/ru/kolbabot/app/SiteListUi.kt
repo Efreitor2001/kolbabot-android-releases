@@ -34,8 +34,8 @@ internal fun SiteDisclosure(
 ) {
     val admin = LocalSiteAdmin.current
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(if (admin) 10.dp else 15.dp),
-        color = Color.White.copy(alpha = if (admin) 0.45f else 1f),
-        border = BorderStroke(1.dp, if (admin) SiteColors.Border else Color(0xFF1D2A4E).copy(alpha = 0.08f))) {
+        color = SiteColors.Surface.copy(alpha = if (admin) 0.45f else 1f),
+        border = BorderStroke(1.dp, SiteColors.Border)) {
         Column {
             Row(modifier.fillMaxWidth()
                 .clickable(role = Role.Button, onClick = onToggle)
@@ -57,7 +57,7 @@ internal fun SiteDisclosure(
             }
             if (expanded) {
                 HorizontalDivider(color = SiteColors.Border)
-                Column(Modifier.fillMaxWidth().background(if (admin) Color.Transparent else Color(0xFFFBFCFE))
+                Column(Modifier.fillMaxWidth().background(if (admin) Color.Transparent else SiteColors.Soft)
                     .padding(bodyPadding), verticalArrangement = Arrangement.spacedBy(bodySpacing), content = content)
             }
         }
@@ -77,7 +77,7 @@ internal fun SiteListRow(
     badges: @Composable RowScope.() -> Unit = {},
 ) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(if (framed) 14.dp else 0.dp),
-        color = Color.White.copy(alpha = if (framed) 0.7f else 1f),
+        color = SiteColors.Surface.copy(alpha = if (framed) 0.7f else 1f),
         border = if (framed) BorderStroke(1.dp, SiteColors.Border) else null) {
         Row(modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
             .heightIn(min = 52.dp).padding(if (framed) 10.dp else 14.dp),

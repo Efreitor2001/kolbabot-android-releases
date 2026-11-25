@@ -9,6 +9,14 @@ import java.util.Locale
 
 internal fun variantGroup(product: JSONObject): String = if (product.optString("product_type") == "digital_book") "" else product.optString("variant_group").trim().takeUnless { it == "null" }.orEmpty()
 
+internal fun storePurchaseTitle(item: JSONObject): String {
+    val title = item.optString("title").trim().takeUnless { it == "null" }.orEmpty().ifBlank { "Товар" }
+    val label = item.optString("variant_label").trim().takeUnless { it == "null" }.orEmpty()
+    fun compact(value: String) = value.lowercase(Locale.ROOT).filterNot(Char::isWhitespace)
+    return if (label.isNotBlank() && item.optString("product_type") != "digital_book" &&
+        !compact(title).contains(compact(label))) "$title · $label" else title
+}
+
 internal fun storeSearchText(text: String): String = text.lowercase(Locale.ROOT).replace('ё', 'е')
     .replace(Regex("([a-zа-я])(\\d)"), "$1 $2").replace(Regex("(\\d)([a-zа-я])"), "$1 $2")
     .replace(Regex("[^0-9a-zа-я\\s]"), " ").replace(Regex("\\s+"), " ").trim()

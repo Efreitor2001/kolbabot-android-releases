@@ -17,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
@@ -41,13 +40,10 @@ import androidx.compose.ui.unit.sp
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
     interactionSource: MutableInteractionSource? = null, content: @Composable RowScope.() -> Unit,
 ) {
-    val gradient = colors == null
-    val decoration = if (gradient) Modifier.background(
-        Brush.linearGradient(listOf(SiteColors.Brand, SiteColors.Brand2)), shape) else Modifier
     androidx.compose.material3.Button(onClick, modifier.heightIn(min = 44.dp)
-        .alpha(if (enabled) 1f else 0.78f).then(decoration), enabled, shape,
-        colors ?: ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White,
-            disabledContainerColor = Color.Transparent, disabledContentColor = Color.White),
+        .alpha(if (enabled) 1f else 0.6f), enabled, shape,
+        colors ?: ButtonDefaults.buttonColors(containerColor = SiteColors.Action, contentColor = Color.White,
+            disabledContainerColor = SiteColors.Action, disabledContentColor = Color.White),
         elevation, border, contentPadding, interactionSource, content)
 }
 
@@ -58,9 +54,9 @@ import androidx.compose.ui.unit.sp
     contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     interactionSource: MutableInteractionSource? = null, content: @Composable RowScope.() -> Unit,
 ) {
-    androidx.compose.material3.OutlinedButton(onClick, modifier.heightIn(min = 44.dp).alpha(if (enabled) 1f else 0.78f),
-        enabled, shape, colors ?: ButtonDefaults.outlinedButtonColors(containerColor = Color.White,
-            contentColor = SiteColors.Ink, disabledContainerColor = Color.White, disabledContentColor = SiteColors.Muted),
+    androidx.compose.material3.OutlinedButton(onClick, modifier.heightIn(min = 44.dp).alpha(if (enabled) 1f else 0.6f),
+        enabled, shape, colors ?: ButtonDefaults.outlinedButtonColors(containerColor = SiteColors.Surface,
+            contentColor = SiteColors.Ink, disabledContainerColor = SiteColors.Surface, disabledContentColor = SiteColors.Muted),
         elevation, border, contentPadding, interactionSource, content)
 }
 
@@ -84,7 +80,7 @@ import androidx.compose.ui.unit.sp
     interactionSource: MutableInteractionSource? = null, content: @Composable RowScope.() -> Unit,
 ) {
     androidx.compose.material3.FilledTonalButton(onClick, modifier.heightIn(min = 44.dp), enabled, shape,
-        colors ?: ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEEF2FF), contentColor = SiteColors.Brand),
+        colors ?: ButtonDefaults.filledTonalButtonColors(containerColor = SiteColors.AccentSoft, contentColor = SiteColors.Brand),
         elevation, border, contentPadding, interactionSource, content)
 }
 
@@ -101,22 +97,25 @@ import androidx.compose.ui.unit.sp
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = false, maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE, minLines: Int = 1,
     interactionSource: MutableInteractionSource? = null,
-    shape: Shape = RoundedCornerShape(if (LocalSiteAdmin.current) 10.dp else 12.dp),
+    shape: Shape = RoundedCornerShape(10.dp),
     colors: TextFieldColors? = null,
 ) {
-    val admin = LocalSiteAdmin.current
+    val cart = LocalSiteCart.current
+    val focusRing = if (cart) SiteColors.CartBorder else SiteColors.AccentSoft
+    val fieldBackground = if (cart) SiteColors.CartItem else SiteColors.Surface
+    val fieldBorder = if (cart) SiteColors.CartBorder else SiteColors.Border
+    val captionColor = if (cart) SiteColors.CartMuted else if (LocalSiteAdmin.current) SiteColors.Ink else SiteColors.Muted
     val auth = LocalSiteAuth.current
     val interactions = interactionSource ?: remember { MutableInteractionSource() }
     val focused by interactions.collectIsFocusedAsState()
     val palette = colors ?: OutlinedTextFieldDefaults.colors(
             focusedTextColor = SiteColors.Ink, unfocusedTextColor = SiteColors.Ink,
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = if (admin) Color.White else SiteColors.InputBackground,
-            disabledContainerColor = if (admin) Color.White else SiteColors.InputBackground,
-            focusedBorderColor = SiteColors.Brand,
-            unfocusedBorderColor = if (admin) SiteColors.InputBorder else Color(0xFF495674).copy(alpha = 0.14f),
-            focusedLabelColor = SiteColors.Brand, unfocusedLabelColor = Color(0xFF596579),
-            focusedPlaceholderColor = Color(0xFF9CA3AF), unfocusedPlaceholderColor = Color(0xFF9CA3AF),
+            focusedContainerColor = fieldBackground, unfocusedContainerColor = fieldBackground, disabledContainerColor = fieldBackground,
+            errorContainerColor = fieldBackground,
+            focusedBorderColor = if (cart) SiteColors.CartIcon else SiteColors.Brand,
+            unfocusedBorderColor = fieldBorder,
+            focusedLabelColor = captionColor, unfocusedLabelColor = captionColor,
+            focusedPlaceholderColor = captionColor.copy(alpha = .8f), unfocusedPlaceholderColor = captionColor.copy(alpha = .8f),
             errorBorderColor = SiteColors.Error, errorLabelColor = SiteColors.Error,
             cursorColor = SiteColors.Brand)
     fun stateColor(normal: Color, focusedColor: Color, disabled: Color, errorColor: Color) = when {
@@ -149,7 +148,7 @@ import androidx.compose.ui.unit.sp
                     }
                     Row(Modifier.fillMaxWidth().drawBehind {
                         if (focused && enabled) drawOutline(shape.createOutline(size, layoutDirection, this),
-                            SiteColors.Brand.copy(alpha = 0.1f), style = Stroke(6.dp.toPx()))
+                            focusRing, style = Stroke(6.dp.toPx()))
                     }.background(fill, shape).border(1.dp, edge, shape).heightIn(min = if (auth) 48.dp else 44.dp)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -182,15 +181,13 @@ import androidx.compose.ui.unit.sp
     selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit,
     modifier: Modifier = Modifier, enabled: Boolean = true,
     leadingIcon: (@Composable () -> Unit)? = null, trailingIcon: (@Composable () -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(50), colors: SelectableChipColors? = null,
+    shape: Shape = RoundedCornerShape(10.dp), colors: SelectableChipColors? = null,
     elevation: SelectableChipElevation? = null, border: BorderStroke? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
-    val decoration = if (selected && colors == null) Modifier.background(
-        Brush.linearGradient(listOf(SiteColors.Brand, SiteColors.Brand2)), shape) else Modifier
-    androidx.compose.material3.FilterChip(selected, onClick, label, modifier.then(decoration), enabled,
+    androidx.compose.material3.FilterChip(selected, onClick, label, modifier, enabled,
         leadingIcon, trailingIcon, shape,
-        colors ?: FilterChipDefaults.filterChipColors(containerColor = Color.White, labelColor = SiteColors.Ink,
-            selectedContainerColor = Color.Transparent, selectedLabelColor = Color.White),
-        elevation, border ?: BorderStroke(1.dp, if (selected) Color.Transparent else SiteColors.Border), interactionSource)
+        colors ?: FilterChipDefaults.filterChipColors(containerColor = SiteColors.Soft, labelColor = SiteColors.Ink,
+            selectedContainerColor = SiteColors.Action, selectedLabelColor = Color.White),
+        elevation, border ?: BorderStroke(1.dp, if (selected && colors == null) SiteColors.Action else SiteColors.Border), interactionSource)
 }

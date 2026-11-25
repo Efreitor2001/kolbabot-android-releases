@@ -1,103 +1,125 @@
 package ru.kolbabot.app
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import org.json.JSONObject
 
 internal val LocalAdminChrome = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
 internal val LocalAdminScrollOffset = staticCompositionLocalOf<() -> Int> { { 0 } }
 
-/** admin.html header and editor tabs share the page scroll, including on the dashboard. */
-@Composable internal fun AdminChrome(user: JSONObject, bootstrap: JSONObject?, state: SiteChromeState?,
-    section: String, sections: List<Pair<String, String>>, onSection: (String) -> Unit) {
+private val adminNavigation = listOf(
+    "" to listOf("dashboard" to "Дашборд"),
+    "Продажи" to listOf("orders" to "Заказы", "store" to "Магазин", "carts" to "Корзины", "reviews" to "Отзывы"),
+    "Материалы" to listOf("recipes" to "Рецепты", "articles" to "Статьи", "handbook" to "Справочник",
+        "equipment" to "Оборудование", "faq" to "FAQ", "catalog" to "Каталог"),
+    "Клиенты" to listOf("users" to "Пользователи", "support" to "Поддержка", "notifications" to "Оповещения"),
+    "Система" to listOf("security" to "Безопасность", "tools" to "Инструменты", "db" to "БД"),
+)
+
+@Composable
+internal fun AdminChrome(user: JSONObject, state: SiteChromeState?, section: String, onSite: () -> Unit, onSection: (String) -> Unit) {
     val scrollOffset = LocalAdminScrollOffset.current
-    var heroHeight by remember { mutableIntStateOf(0) }
-    var metaHeight by remember { mutableIntStateOf(0) }
-    val headerGaps = with(LocalDensity.current) { 20.dp.roundToPx() }
-    val name = user.optString("username").ifBlank {
-        listOf(user.optString("first_name"), user.optString("last_name")).filter { it.isNotBlank() }.joinToString(" ")
-    }.ifBlank { "Пользователь" }
-    val greetingName = user.optString("username").ifBlank { user.optString("first_name") }
-    Column(Modifier.zIndex(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        AdminChromeSurface(Modifier.onSizeChanged { heroHeight = it.height }) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("АДМИНКА", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = .96.sp, color = SiteColors.Muted)
-                Text("Колбабот Admin", style = TextStyle(brush = Brush.linearGradient(
-                    0f to Color(0xFF1E3A8A), .45f to Color(0xFF3C61D3), 1f to Color(0xFF1B937C)),
-                    fontFamily = FontFamily.Serif, fontSize = 28.sp, lineHeight = 31.sp, fontWeight = FontWeight.Bold))
-                Text("Привет${greetingName.takeIf { it.isNotBlank() }?.let { ", $it" }.orEmpty()}. Сайт готов к работе.", color = SiteColors.Muted)
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Категорий" to bootstrap?.opt("categories_count"), "Оборудование" to bootstrap?.opt("equipment_count"),
-                        "FAQ" to bootstrap?.opt("faq_count"), "Справочник" to bootstrap?.optJSONArray("handbook_sections")?.length()).forEach { (title, count) ->
-                        Surface(shape = RoundedCornerShape(50), color = SiteColors.BackgroundTop, border = BorderStroke(1.dp, SiteColors.Border)) {
-                            Text("$title: ${count ?: "—"}", Modifier.padding(horizontal = 10.dp, vertical = 7.dp), fontSize = 12.sp)
+    var navigationOpen by remember { mutableStateOf(false) }
+    var accountMenuOpen by remember { mutableStateOf(false) }
+    Surface(Modifier.fillMaxWidth().zIndex(1f).offset { IntOffset(0, scrollOffset()) },
+        color = SiteColors.Surface, contentColor = SiteColors.Ink) {
+        Column {
+            Row(Modifier.fillMaxWidth().heightIn(min = 68.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ navigationOpen = true }, Modifier.size(42.dp).testTag("admin-menu-open"),
+                    contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(11.dp)) {
+                    Text("☰", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Открыть меню админки" })
+                }
+                Row(Modifier.weight(1f).clickable(onClick = onSite), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SiteMascot(38.dp)
+                    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp > 360) {
+                        Text("Колбабот", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    }
+                }
+                SiteThemeButton()
+                if (state != null) {
+                    IconButton(state.onNotifications, Modifier.size(38.dp, 42.dp)) {
+                        Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(19.dp), tint = SiteColors.Ink)
+                    }
+                    Box {
+                        OutlinedIconButton({ accountMenuOpen = true }, Modifier.size(40.dp), shape = RoundedCornerShape(11.dp)) {
+                            Icon(painterResource(R.drawable.site_nav_account), "Меню аккаунта", Modifier.size(18.dp), tint = SiteColors.Ink)
+                        }
+                        DropdownMenu(accountMenuOpen, { accountMenuOpen = false }) {
+                            Text(user.optString("username", "Администратор") + " · ADMIN", Modifier.padding(12.dp), color = SiteColors.Muted)
+                            DropdownMenuItem({ Text("Перейти на сайт") }, { accountMenuOpen = false; onSite() })
+                            DropdownMenuItem({ Text("Выйти") }, { accountMenuOpen = false; state.onLogout() }, enabled = !state.busy)
                         }
                     }
                 }
             }
+            HorizontalDivider(color = SiteColors.Border)
+            state?.error?.takeIf(String::isNotBlank)?.let { ErrorMessage(it) }
         }
-        AdminChromeSurface(Modifier.onSizeChanged { metaHeight = it.height }) {
-            Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AdminMeta("Пользователь", name, Modifier.weight(1f))
-                    AdminMeta("Роль", "Администратор", Modifier.weight(1f))
-                    AdminMeta("Уровень", "ADMIN", Modifier.weight(1f))
-                }
-                if (state != null) OutlinedButton(state.onLogout, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = !state.busy) { Text("Выйти") }
-            }
-        }
-        // app.js hides every site tab except admin on /admin; keep the actual runtime view.
-        AdminChromeSurface(Modifier.zIndex(1f).offset { IntOffset(0, (scrollOffset() - heroHeight - metaHeight - headerGaps).coerceAtLeast(0)) }) {
-            Column(Modifier.padding(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilterChip(selected = true, onClick = {}, label = { Text("Админ") }, modifier = Modifier.widthIn(min = 132.dp))
-                if (state != null) OutlinedButton(state.onNotifications, Modifier.size(44.dp), shape = RoundedCornerShape(50), contentPadding = PaddingValues(10.dp)) {
-                    Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(22.dp))
-                }
-            }
-        }
-        AdminChromeSurface {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Админ-редактор", fontFamily = FontFamily.Serif, fontSize = 16.8.sp, fontWeight = FontWeight.Bold)
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    sections.forEach { (key, title) ->
-                        FilterChip(selected = section == key, onClick = { onSection(key) }, modifier = Modifier.testTag("admin-tab-$key"), label = { Text(title) })
-                    }
-                }
-            }
-        }
-        if (!state?.error.isNullOrBlank()) ErrorMessage(state!!.error)
     }
+    if (navigationOpen) AdminNavigationDrawer(section, onDismiss = { navigationOpen = false },
+        onSite = { navigationOpen = false; onSite() },
+        onSection = { navigationOpen = false; onSection(it) })
 }
 
-@Composable private fun AdminChromeSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .94f),
-        border = BorderStroke(1.dp, SiteColors.Border), content = content)
-}
-
-@Composable private fun AdminMeta(label: String, value: String, modifier: Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(12.dp), color = SiteColors.BackgroundTop, border = BorderStroke(1.dp, SiteColors.Border)) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, fontSize = 12.sp, color = SiteColors.Muted)
-            Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+@Composable
+private fun AdminNavigationDrawer(section: String, onDismiss: () -> Unit, onSite: () -> Unit, onSection: (String) -> Unit) {
+    Dialog(onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val width = minOf(280.dp, maxWidth - 40.dp)
+            Box(Modifier.fillMaxSize().clickable(onClick = onDismiss))
+            Surface(Modifier.width(width).fillMaxHeight(), color = SiteColors.Surface, contentColor = SiteColors.Ink) {
+                Column(Modifier.systemBarsPadding().verticalScroll(rememberScrollState()).padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Управление сайтом", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = SiteColors.Muted)
+                        OutlinedButton(onDismiss, Modifier.size(38.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(11.dp),
+                            border = BorderStroke(1.dp, SiteColors.CartBorder), colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = SiteColors.CartIconBackground, contentColor = SiteColors.CartIcon)) {
+                            Text("×", fontSize = 21.sp, modifier = Modifier.semantics { contentDescription = "Закрыть меню админки" })
+                        }
+                    }
+                    adminNavigation.forEach { (label, entries) ->
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            if (label.isNotBlank()) Text(label.uppercase(), Modifier.padding(horizontal = 12.dp),
+                                fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp, color = SiteColors.Muted)
+                            entries.forEach { (key, title) ->
+                                val selected = key == section
+                                TextButton({ onSection(key) }, Modifier.fillMaxWidth().heightIn(min = 42.dp).testTag("admin-tab-$key"),
+                                    shape = RoundedCornerShape(9.dp), colors = ButtonDefaults.textButtonColors(
+                                        containerColor = if (selected) SiteColors.AccentSoft else Color.Transparent,
+                                        contentColor = if (selected) SiteColors.Brand else SiteColors.Muted)) {
+                                    Text(title, Modifier.fillMaxWidth().padding(horizontal = 2.dp), fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = SiteColors.Border)
+                    TextButton(onSite) { Text("Перейти на сайт") }
+                }
+            }
         }
     }
 }

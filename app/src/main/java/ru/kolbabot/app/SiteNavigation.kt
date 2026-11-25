@@ -45,27 +45,28 @@ internal val siteMoreNavigation = listOf(
     SiteNavigationItem("faq", "FAQ"),
     SiteNavigationItem("support", "Поддержка"),
     SiteNavigationItem("account", "Кабинет"),
-    SiteNavigationItem("analytics", "Статистика посещений"),
 )
 
 @Composable internal fun SiteBottomNavigation(section: String, moreOpen: Boolean, onSelect: (String) -> Unit) {
     val primary = setOf("store", "recipes", "custom", "account")
-    Surface(color = Color.White.copy(alpha = 0.96f), shadowElevation = 8.dp) {
+    Surface(color = SiteColors.Surface, shadowElevation = 8.dp) {
         Column {
-            HorizontalDivider(color = Color(0xFF0F172A).copy(alpha = 0.1f))
+            HorizontalDivider(color = SiteColors.Border)
             Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 4.dp, vertical = 5.dp)) {
                 siteBottomNavigation.forEach { item ->
                     val selected = if (item.section == "more") moreOpen || section !in primary else !moreOpen && section == item.section
-                    val color = if (selected) MaterialTheme.colorScheme.primary else Color(0xFF596273)
+                    val color = if (selected) MaterialTheme.colorScheme.primary else SiteColors.Muted
                     Column(Modifier.weight(1f).heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp))
-                        .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                        .background(if (selected) SiteColors.AccentSoft else Color.Transparent)
                         .selectable(selected, role = Role.Tab, onClick = { onSelect(item.section) })
                         .testTag("site-bottom-${item.section}").padding(horizontal = 2.dp, vertical = 5.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                       Box(Modifier.heightIn(min = 24.dp), contentAlignment = Alignment.Center) {
                     when (item.section) {
-                        "store" -> Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(24.dp), tint = color)
-                        "account" -> Icon(painterResource(R.drawable.site_nav_account), null, Modifier.size(24.dp), tint = color)
+                        "store" -> Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "account" -> Icon(painterResource(R.drawable.site_nav_account), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "recipes" -> Icon(painterResource(R.drawable.site_section_recipes), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
+                        "custom" -> Icon(painterResource(R.drawable.site_section_custom), null, Modifier.size(22.dp).testTag("site-bottom-icon-${item.section}"), tint = color)
                         else -> Text(item.symbol, color = color, fontSize = 23.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
                     }
                       }
@@ -102,16 +103,20 @@ internal val siteMoreNavigation = listOf(
         (if (sameAccount && showAccess) listOf(SiteNavigationItem("paywall", "Доступ")) else emptyList()) +
         (if (canAdmin) listOf(SiteNavigationItem("admin", "Админ")) else emptyList())
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), dragHandle = null,
-        containerColor = Color.White, scrimColor = Color(0xFF0F172A).copy(alpha = 0.48f), shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+        containerColor = SiteColors.Surface, scrimColor = Color(0xFF080E18).copy(alpha = .62f), shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
         Column(Modifier.fillMaxWidth().heightIn(max = minOf((LocalConfiguration.current.screenHeightDp * 0.78f).dp, 620.dp)).padding(horizontal = 14.dp, vertical = 16.dp)) {
-            Box(Modifier.align(Alignment.CenterHorizontally).size(42.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFD5D9E2)))
+            Box(Modifier.align(Alignment.CenterHorizontally).size(42.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(SiteColors.Border))
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Навигация", style = MaterialTheme.typography.labelMedium)
                     Text("Все разделы", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = onDismiss, modifier = Modifier.semantics { contentDescription = "Закрыть меню" }) { Text("×", fontSize = 24.sp) }
+                OutlinedButton(onDismiss, Modifier.size(42.dp).semantics { contentDescription = "Закрыть меню" },
+                    shape = RoundedCornerShape(11.dp), contentPadding = PaddingValues(0.dp), border = BorderStroke(1.dp, SiteColors.CartBorder),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SiteColors.CartIconBackground, contentColor = SiteColors.CartIcon)) {
+                    Text("×", fontSize = 24.sp)
+                }
             }
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
@@ -123,9 +128,9 @@ internal val siteMoreNavigation = listOf(
                                 OutlinedButton(onClick = { onSelect(item.section) },
                                     modifier = Modifier.weight(1f).heightIn(min = 52.dp).testTag("site-more-${item.section}"),
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (section == item.section) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else Color(0xFF0F172A).copy(alpha = 0.12f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = if (section == item.section) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color(0xFFF6F7FA),
-                                        contentColor = if (section == item.section) MaterialTheme.colorScheme.primary else Color(0xFF2C2D30)),
+                                    border = BorderStroke(1.dp, if (section == item.section) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f) else SiteColors.Border),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = if (section == item.section) SiteColors.AccentSoft else SiteColors.Soft,
+                                        contentColor = if (section == item.section) MaterialTheme.colorScheme.primary else SiteColors.Ink),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
                                     Text(item.label, Modifier.fillMaxWidth(), fontSize = 14.sp)
                                 }

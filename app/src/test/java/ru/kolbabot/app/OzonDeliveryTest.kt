@@ -5,25 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OzonDeliveryTest {
-    @Test fun mapTilesOnlyAcceptBoundedByteRangesAndHttpsPmtiles() {
-        assertEquals(0L..126L, OzonMapTiles.byteRange("bytes=0-126"))
-        assertEquals(16384L..65535L, OzonMapTiles.byteRange("bytes=16384-65535"))
-        listOf(null, "", "bytes=0-", "bytes=-500", "bytes=10-5", "bytes=0-999999999", "bytes=0-10,30-40").forEach {
-            assertNull(it, OzonMapTiles.byteRange(it))
-        }
-        assertNotNull(OzonMapTiles.safeSource("https://maps.kolbabot.ru/russia-2026-09.pmtiles"))
-        listOf("http://maps.kolbabot.ru/map.pmtiles", "https://user:secret@maps.kolbabot.ru/map.pmtiles", "file:///map.pmtiles", "https://maps.kolbabot.ru/data.json").forEach {
-            assertNull(it, OzonMapTiles.safeSource(it))
-        }
-    }
-    @Test fun mapBridgeCannotReadOtherAuthenticatedEndpoints() {
-        listOf("map-config", "map-points?min_lat=50&max_lat=60&min_lon=30&max_lon=40&zoom=10", "map-point-info?ids=1%2C2&source=directory").forEach {
-            assertTrue(it, OzonDelivery.allowedMapPath(OzonDelivery.API + it))
-        }
-        listOf("https://evil.example/api/store/ozon-delivery/map-config", "//evil.example/map-config", "/api/auth/me", "/api/admin/users",
-            OzonDelivery.API + "../orders", OzonDelivery.API + "map-config#fragment", OzonDelivery.API + "map%2Dconfig",
-            OzonDelivery.API + "map-config?redirect=/api/auth/me", OzonDelivery.API + "quote", OzonDelivery.API + "map-points?token=x").forEach {
-            assertFalse(it, OzonDelivery.allowedMapPath(it))
+    @Test fun mapTilesOnlyAcceptHttpsPmtilesFromTheSite() {
+        val url = "https://maps.kolbabot.ru/russia-2026-09.pmtiles"
+        assertEquals(url, OzonDelivery.basemapUrl(url))
+        assertEquals("$url?v=2", OzonDelivery.basemapUrl("$url?v=2"))
+        listOf("http://maps.kolbabot.ru/map.pmtiles", "https://user:secret@maps.kolbabot.ru/map.pmtiles",
+            "file:///map.pmtiles", "https://maps.kolbabot.ru/data.json", "$url#x").forEach {
+            assertNull(it, OzonDelivery.basemapUrl(it))
         }
     }
 

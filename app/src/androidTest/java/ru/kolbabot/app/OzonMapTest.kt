@@ -1,11 +1,6 @@
 package ru.kolbabot.app
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.webkit.GeolocationPermissions
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -17,55 +12,56 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.ByteArrayInputStream
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/** Actual bundled MapLibre + PMTiles + Protomaps runtime, without Internet or checkout. */
+/** MapLibre Native renders a real PMTiles archive and invokes the production pickup endpoints. */
 @RunWith(AndroidJUnit4::class)
 class OzonMapTest {
     @get:Rule val compose = createComposeRule()
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
-    private val view = AtomicReference<WebView>()
     private val selected = AtomicReference<JSONObject>()
-    private val tileReads = AtomicInteger()
-    private val fixture = pmtilesFixture()
 
-    @Test fun realRendererLoadsRangeTilesAndSelectingMapPointUsesNativeBridge() {
+    @Test fun nativeRendererLoadsPmtilesAndSelectsAPickupPoint() {
         val api = MapApi(context)
-        show(api)
-        awaitMap(20000, "document.querySelectorAll('.ozon-pvz-map-marker.is-point').length === 1", api)
-        assertTrue("PMTiles must be read through actual HTTP Range requests", tileReads.get() >= 2)
+        val map = AtomicReference<MapLibreMap>()
+        val tiles = File(context.cacheDir, "ozon-pickup-test.pmtiles").apply { writeBytes(pmtilesFixture()) }
+        compose.setContent { KolbaTheme {
+            CompositionLocalProvider(LocalOzonMapTestConfig provides OzonMapTestConfig(tiles) { map.set(it) }) {
+                OzonPickupPicker(api, null, {}, { selected.set(it) })
+            }
+        } }
+        val mapCenter = LatLng(55.751574, 37.573856)
+        compose.waitUntil(25_000) {
+            map.get()?.let { current ->
+                compose.runOnIdle {
+                    val point = current.projection.toScreenLocation(mapCenter)
+                    current.queryRenderedFeatures(point, "water").isNotEmpty() &&
+                        current.queryRenderedFeatures(point, "ozon-pvz-circle").isNotEmpty()
+                }
+            } == true
+        }
         assertTrue(api.reads.any { it.startsWith("${OzonDelivery.API}map-points?") })
-        assertEquals("true", js("Boolean(mapInstance && mapInstance.isStyleLoaded())"))
-        assertEquals("true", js("Boolean(mapInstance.getCanvas().getContext('webgl2') || mapInstance.getCanvas().getContext('webgl'))"))
-        screenshot("02-real-maplibre-pmtiles-marker")
-        js("document.querySelector('.ozon-pvz-map-marker.is-point').click(); true")
+        screenshot("02-native-maplibre-pmtiles-marker")
+        compose.onNodeWithContentDescription("Карта пунктов выдачи Ozon").assertIsDisplayed().performTouchInput { click(center) }
         compose.waitUntil(5000) { selected.get() != null }
         assertEquals(101L, selected.get().getLong("delivery_point_id"))
         assertEquals("Москва, Тестовая улица, 1", selected.get().getString("full_address"))
         assertTrue(api.reads.any { it.startsWith("${OzonDelivery.API}map-point-info?ids=101") })
-        assertEquals("null", js("window.OzonNativeRequest('/api/admin/users').catch(() => null); null"))
-        assertFalse(api.reads.contains("/api/admin/users"))
     }
 
-    @Test fun mapFailureKeepsSearchAvailableAndForeignOriginCannotAskForLocation() {
+    @Test fun mapFailureKeepsNativeSearchAndPointSelectionAvailable() {
         val api = MapApi(context, fail = true)
-        show(api)
-        awaitMap(10000, "Boolean(document.getElementById('ozonPvzMapStatus')?.textContent.includes('Карта временно недоступна'))", api)
-        val allowed = AtomicReference<Boolean>()
-        instrumentation.runOnMainSync {
-            view.get().webChromeClient!!.onGeolocationPermissionsShowPrompt("https://untrusted.invalid", GeolocationPermissions.Callback { _, grant, _ -> allowed.set(grant) })
-        }
-        assertEquals(false, allowed.get())
+        compose.setContent { KolbaTheme { OzonPickupPicker(api, null, {}, { selected.set(it) }) } }
+        compose.onNodeWithText("Карта временно недоступна").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Карта пунктов выдачи Ozon").assertDoesNotExist()
         compose.onNodeWithTag("ozonPointSearch").performScrollTo().performTextInput("Москва")
         compose.onNodeWithTag("ozonPointSearch").performImeAction()
         compose.waitUntil(5000) { compose.onAllNodesWithTag("ozonPoint_101").fetchSemanticsNodes().isNotEmpty() }
@@ -75,66 +71,10 @@ class OzonMapTest {
         assertEquals(101L, selected.get().getLong("delivery_point_id"))
     }
 
-    private fun show(api: MapApi) {
-        val hooks = OzonMapHooks(intercept = ::resource, onCreated = { view.set(it) })
-        compose.setContent { KolbaTheme {
-            CompositionLocalProvider(LocalOzonMapHooks provides hooks) {
-                OzonPickupPicker(api, null, {}, { selected.set(it) })
-            }
-        } }
-    }
-
-    private fun resource(request: WebResourceRequest): WebResourceResponse? {
-        val uri = request.url
-        // loadDataWithBaseURL may expose its data: main document here. Only
-        // replace network resources, never the actual bundled HTML document.
-        if (request.isForMainFrame || uri.scheme != "https") return null
-        if (uri.path == "/__native_ozon_map__/basemap.pmtiles") {
-            val range = OzonMapTiles.byteRange(request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value)
-                ?: throw AssertionError("MapLibre/PMTiles did not request a bounded range")
-            val start = range.first.toInt()
-            val end = minOf(range.last.toInt(), fixture.lastIndex)
-            tileReads.incrementAndGet()
-            return WebResourceResponse("application/octet-stream", null, 206, "Partial Content", mapOf(
-                "Content-Range" to "bytes $start-$end/${fixture.size}", "Content-Length" to (end - start + 1).toString(),
-                "Accept-Ranges" to "bytes", "Access-Control-Allow-Origin" to "https://map-fixture.invalid",
-                "Access-Control-Expose-Headers" to "Content-Range, Content-Length, Accept-Ranges",
-            ), ByteArrayInputStream(fixture.copyOfRange(start, end + 1)))
-        }
-        if (uri.host == "map-fixture.invalid") return null // Real production asset loader.
-        if (uri.path.orEmpty().endsWith(".json")) return response("application/json", "{}".toByteArray())
-        if (uri.path.orEmpty().endsWith(".png")) return response("image/png", android.util.Base64.decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", android.util.Base64.DEFAULT))
-        // Empty fixture glyph response. The fixture vector tile has only water,
-        // so it needs no glyphs; all network requests are intercepted regardless.
-        return response("application/octet-stream", ByteArray(0))
-    }
-
-    private fun response(type: String, bytes: ByteArray) = WebResourceResponse(type, null, 200, "OK", mapOf("Access-Control-Allow-Origin" to "*"), ByteArrayInputStream(bytes))
-
-    private fun awaitMap(timeout: Long, condition: String, api: MapApi) {
-        try {
-            compose.waitUntil(timeout) { view.get() != null && js(condition) == "true" }
-        } catch (failure: Throwable) {
-            val page = if (view.get() == null) "WebView not created" else js("JSON.stringify({ready:document.readyState,status:document.getElementById('ozonPvzMapStatus')?.textContent,html:document.body?.innerText})")
-            screenshot("map-failure-diagnostic")
-            throw AssertionError("Map did not become ready: $page; tile ranges=${tileReads.get()}; API=${api.reads}", failure)
-        }
-    }
-
-    private fun js(expression: String): String {
-        val result = AtomicReference<String>()
-        val done = CountDownLatch(1)
-        instrumentation.runOnMainSync { view.get().evaluateJavascript(expression) { result.set(it); done.countDown() } }
-        assertTrue("Map JavaScript timed out", done.await(5, TimeUnit.SECONDS))
-        return result.get()
-    }
-
     private fun screenshot(name: String) {
-        compose.waitForIdle()
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: throw AssertionError("No map screenshot")
         val directory = File(context.getExternalFilesDir(null), "ozon-smoke").apply { mkdirs() }
-        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(directory, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
 
@@ -157,7 +97,7 @@ class OzonMapTest {
     }
 }
 
-/** A tiny valid PMTiles v3 archive with one real MVT water polygon at zoom 0. */
+/** A PMTiles v3 archive with one real MVT water polygon at zoom 0. */
 private fun pmtilesFixture(): ByteArray {
     fun integers(vararg values: Int): ByteArray = ByteArrayOutputStream().apply {
         values.forEach { original ->
@@ -184,5 +124,6 @@ private fun pmtilesFixture(): ByteArray {
     header.put(1).put(1).put(1).put(1).put(0).put(0)
     header.putInt(-1800000000).putInt(-850000000).putInt(1800000000).putInt(850000000)
     header.put(0).putInt(375738560).putInt(557515740)
-    return header.array() + directory + metadata + tile
+    // Keep the initial 16 KiB PMTiles read in-range, as with the production archive.
+    return header.array() + directory + metadata + tile + ByteArray(16_384)
 }

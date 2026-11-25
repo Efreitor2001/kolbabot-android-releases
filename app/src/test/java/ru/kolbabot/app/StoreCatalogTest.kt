@@ -43,6 +43,14 @@ class StoreCatalogTest {
         assertEquals(listOf(999, 2), result.map { it.getInt("quantity") })
         assertEquals(998, server.first().getInt("quantity"))
     }
+    @Test fun purchaseTitlePreservesTheChosenCasingWithoutDuplicatingLabels() {
+        val row = product(1, "shell").put("variant_label", "40 мм")
+        assertEquals("Оболочка коллагеновая · 40 мм", storePurchaseTitle(row))
+        row.put("title", "Оболочка 40 мм")
+        assertEquals("Оболочка 40 мм", storePurchaseTitle(row))
+        row.put("title", "Оболочка коллагеновая · 40 мм")
+        assertEquals("Оболочка коллагеновая · 40 мм", storePurchaseTitle(row))
+    }
     @Test fun nativeLinksAcceptOnlyKnownRoutesOnOurOrigin() {
         assertEquals(82L, nativeDestination("https://kolbabot.ru/?product=82#store")?.productId)
         assertEquals(91L, nativeDestination("/?article=91#articles")?.articleId)
@@ -51,6 +59,8 @@ class StoreCatalogTest {
         assertNull(nativeDestination("/?ref=FRIEND#account"))
         assertNull(nativeDestination("/?order_id=subscription123#account"))
         assertEquals("admin", nativeDestination("/admin")?.section)
+        assertEquals("tseh", nativeDestination("/tseh")?.section)
+        assertNull(nativeDestination("https://evil.invalid/tseh"))
         assertEquals("admin", nativeDestination("/#admin")?.section)
         listOf("https://evil.invalid/?product=82", "https://kolbabot.ru@evil.invalid/?article=91", "http://kolbabot.ru/?product=1", "/admin?role=admin", "/api/admin/users", "https://evil.invalid/admin", "javascript:alert(1)").forEach {
             assertNull(it, nativeDestination(it))

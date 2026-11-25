@@ -42,7 +42,7 @@ class GuestCartSmokeTest {
         compose.onNodeWithText("Обновить корзину").performScrollTo().performClick()
         compose.onNodeWithText("5 шт.").assertExists()
         assertEquals(1, api.writes)
-        compose.onNodeWithTag("storeInlineCart").assertExists()
+        compose.onNodeWithTag("storeCartDrawer").assertExists()
         compose.onNode(hasSetTextAction() and hasText("ФИО")).performScrollTo().assertExists()
         // Checkout is already in the cart; submitting still requires customer,
         // delivery and consent fields instead of an intermediate navigation step.

@@ -85,6 +85,7 @@ class AdminAccessSmokeTest {
         val restoration = StateRestorationTester(compose)
         var closed by mutableStateOf(false)
         restoration.setContent { KolbaTheme { if (closed) Text("Обычный кабинет") else AdminScreen(api) { closed = true } } }
+        compose.onNodeWithTag("admin-menu-open").performClick()
         compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
         compose.onNodeWithText("Добавить администратора по логину").assertExists()
         var previousRequests = 0
@@ -114,6 +115,7 @@ class AdminAccessSmokeTest {
         compose.setContent { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
             KolbaTheme { if (closed) Text("Раздел закрыт") else AdminScreen(api) { closed = true } }
         } }
+        compose.onNodeWithTag("admin-menu-open").performClick()
         compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
         compose.onNodeWithTag("admin-user-picker").assertExists()
         compose.waitUntil(timeoutMillis = 5_000) { api.reads.any { it.startsWith("/api/admin/users?") } }
@@ -132,6 +134,7 @@ class AdminAccessSmokeTest {
         compose.setContent { CompositionLocalProvider(LocalLifecycleOwner provides owner) {
             KolbaTheme { if (closed) Text("Раздел закрыт") else AdminScreen(api) { closed = true } }
         } }
+        compose.onNodeWithTag("admin-menu-open").performClick()
         compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
         compose.onNodeWithText("Добавить администратора по логину").assertExists()
         var previousRequests = 0
@@ -175,7 +178,7 @@ private class AccessFakeApi(context: Context, id: Long, admin: Boolean) : ApiCli
             path == "/api/store/cart" -> JSONObject().put("rewards", JSONObject().put("sausages_kopecks", 0))
             path == "/api/account/billing" -> JSONObject().put("tier", "none").put("status", "inactive")
             path == "/api/bootstrap" -> JSONObject().put("payments", JSONObject().put("enabled", false))
-            path == "/api/admin/dashboard" -> { check(serverAdmin); JSONObject() }
+            path in setOf("/api/admin/dashboard", "/api/admin/analytics") -> { check(serverAdmin); JSONObject() }
             path.startsWith("/api/admin/users?") -> { check(serverAdmin); JSONObject().put("items", JSONArray()) }
             else -> throw AssertionError("Unexpected GET $path")
         }
