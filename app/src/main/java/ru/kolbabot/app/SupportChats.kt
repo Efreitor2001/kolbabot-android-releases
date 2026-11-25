@@ -337,16 +337,15 @@ private fun SupportThread(
                 )
                 chat?.let { ChatStatusBadge(it.chatStatus(), admin) }
             }
-            if (admin) Box {
-                ChatIconButton("Меню чата", "menu", { menu = true })
-                DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem({ Text("Поиск в чате") }, { menu = false; innerSearch = true })
-                    if (admin) {
-                        HorizontalDivider()
+            if (admin) {
+                ChatIconButton("Поиск в чате", "search", { innerSearch = true })
+                Box {
+                    ChatIconButton("Меню чата", "menu", { menu = true })
+                    DropdownMenu(menu, onDismissRequest = { menu = false }) {
                         ChatStatus.entries.forEach { status ->
                             DropdownMenuItem(
-                                { ChatStatusBadge(status, true) },
-                                {
+                                text = { ChatStatusBadge(status, true) },
+                                onClick = {
                                     menu = false
                                     sending = true
                                     scope.launch {
@@ -402,7 +401,7 @@ private fun SupportThread(
                 ChatBubble(
                     message.optString("body"), date?.format(supportClock).orEmpty(),
                     message.optString("sender_role") == if (admin) "admin" else "user", festive, initialAnchor == messageId,
-                    author = message.adminSignature(),
+                    author = message.adminSignature(showIdentity = admin),
                     onClick = if (searchActive) { {
                         query = ""
                         innerSearch = false
@@ -451,8 +450,9 @@ private fun SupportThread(
     }
 }
 
-private fun JSONObject.adminSignature(): String {
+private fun JSONObject.adminSignature(showIdentity: Boolean): String {
     if (optString("sender_role") != "admin") return ""
+    if (!showIdentity) return "Администратор"
     val name = optString("admin_name").takeUnless { it.isBlank() || it == "null" } ?: "Администратор"
     val id = optLong("admin_id")
     return if (id > 0) "$name · ID $id" else name

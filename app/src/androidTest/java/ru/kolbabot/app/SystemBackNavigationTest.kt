@@ -129,11 +129,12 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Список материалов").assertExists()
     }
 
-    @Test fun supportOpensOneThreadAndShowsTheAdministratorInsteadOfCustomerId() {
+    @Test fun supportOpensOneThreadAndHidesStaffIdentityFromTheCustomer() {
         val api = BackFakeApi(context, accountId)
         compose.setContent { KolbaTheme { SupportChatScreen(api, onBack = {}) } }
         compose.onNodeWithText("Ответ администратора").assertIsDisplayed()
-        compose.onNodeWithText("Анна · ID 11").assertIsDisplayed()
+        compose.onNodeWithText("Администратор").assertIsDisplayed()
+        compose.onNodeWithText("Анна · ID 11").assertDoesNotExist()
         compose.onNodeWithText("ID 44").assertDoesNotExist()
         compose.onNodeWithTag("support-chat-52").assertDoesNotExist()
         compose.onNodeWithContentDescription("Новое обращение").assertDoesNotExist()
@@ -151,10 +152,15 @@ class SystemBackNavigationTest {
         } }
         compose.onNodeWithTag("support-chat-52").performClick()
         compose.onNodeWithText("Текст тестового обращения").assertExists()
-        compose.onNodeWithContentDescription("Меню чата").performClick()
-        compose.onNodeWithText("Поиск в чате").assertIsDisplayed()
+        compose.onNodeWithText("Анна · ID 11").assertExists()
+        compose.onNodeWithContentDescription("Поиск в чате").performClick()
+        compose.onNodeWithText("Найти сообщение").assertIsDisplayed()
         pressBack()
-        compose.onNodeWithText("Поиск в чате").assertDoesNotExist()
+        compose.onNodeWithText("Найти сообщение").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Меню чата").performClick()
+        compose.onNodeWithText("В работе").assertIsDisplayed()
+        pressBack()
+        compose.onNodeWithText("В работе").assertDoesNotExist()
         compose.onNodeWithContentDescription("Отправить").assertExists()
         pressBack()
         compose.onNodeWithTag("support-chat-52").assertExists()
@@ -203,6 +209,9 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
                 check(admin)
                 JSONObject().put("chat", supportChat()).put("items", JSONArray().put(
                     JSONObject().put("id", 101).put("sender_role", "user").put("body", "Текст тестового обращения")
+                ).put(
+                    JSONObject().put("id", 102).put("sender_role", "admin").put("admin_id", 11)
+                        .put("admin_name", "Анна").put("body", "Ответ администратора")
                 ))
             }
             path.startsWith("/api/admin/support/chats?") -> {
