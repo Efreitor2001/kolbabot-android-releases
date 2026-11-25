@@ -117,7 +117,7 @@ private fun PeopleConfirmDialog(action: PeopleConfirmation?, onClose: () -> Unit
 @Composable
 fun AdminPeopleScreen(api: ApiClient, section: String, onBack: () -> Unit) {
     when (section) {
-        "support" -> AdminSupportPeopleScreen(api, onBack)
+        "support" -> SupportChatScreen(api, admin = true, onBack = onBack)
         "notifications" -> AdminNotificationsPeopleScreen(api, onBack)
         else -> AdminUsersPeopleScreen(api, onBack)
     }
@@ -310,45 +310,6 @@ private fun AdminUsersPeopleScreen(api: ApiClient, onBack: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun AdminSupportPeopleScreen(api: ApiClient, onBack: () -> Unit) {
-    var selectedId by rememberSaveable { mutableLongStateOf(0) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    var notice by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
-    RemotePage("Обращения поддержки", api, "/api/admin/support/tickets?status=all&limit=300", onBack) { data, reload ->
-        val tickets = data.items("items")
-        val selected = tickets.firstOrNull { it.optLong("id") == selectedId } ?: tickets.firstOrNull()
-        var answer by rememberSaveable(selected?.optLong("id")) { mutableStateOf("") }
-        OutlinedButton(enabled = !busy, onClick = reload) { Text("Обновить") }
-        SiteSelect("Обращение", selected?.optLong("id")?.toString().orEmpty(), tickets.map {
-            it.optLong("id").toString() to "#${it.optLong("id")} · ${it.optString("username", "Пользователь")}"
-        }, { selectedId = it.toLong(); notice = "" }, enabled = !busy)
-        selected?.let { ticket ->
-            SectionCard {
-                Text("#${ticket.optLong("id")} · ${ticket.optString("username", "Пользователь")}", style = MaterialTheme.typography.titleSmall)
-                Text(ticket.optString("question_text"))
-                val existing = ticket.optString("answer_text").takeUnless { it == "null" }.orEmpty()
-                if (existing.isNotBlank()) Text("Ответ: $existing")
-            }
-        } ?: Text("Выберите обращение.", color = SiteColors.Muted)
-        OutlinedTextField(answer, { answer = it }, label = { Text("Ответ") }, minLines = 4, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-        Button(enabled = !busy && selected != null && answer.isNotBlank(), onClick = {
-            val ticketId = selected!!.optLong("id"); val submitted = answer.trim()
-            busy = true; error = ""; notice = ""
-            scope.launch {
-                try { api.post("/api/admin/support/tickets/$ticketId/answer", JSONObject().put("answer_text", submitted)); answer = ""; notice = "Ответ отправлен."; reload() }
-                catch (cancelled: CancellationException) { throw cancelled }
-                catch (failure: Exception) { error = failure.message.orEmpty() }
-                finally { busy = false }
-            }
-        }) { Text("Отправить ответ") }
-        ErrorMessage(error)
-        if (notice.isNotBlank()) Text(notice, color = SiteColors.Accent)
     }
 }
 

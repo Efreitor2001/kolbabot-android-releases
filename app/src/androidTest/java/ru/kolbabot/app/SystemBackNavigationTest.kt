@@ -127,20 +127,22 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Список материалов").assertExists()
     }
 
-    @Test fun supportDropdownBackDismissesOptionsBeforeLeavingThePage() {
+    @Test fun supportMenuBackClosesMenuThenChatThenSupport() {
         val api = BackFakeApi(context, accountId, admin = true)
         var closed by mutableStateOf(false)
         compose.setContent { KolbaTheme {
             if (closed) Text("Админ-меню") else AdminPeopleScreen(api, "support") { closed = true }
         } }
-        compose.onNodeWithTag("site-select-Обращение").assertTextContains("#52 · Читатель")
+        compose.onNodeWithTag("support-chat-52").performClick()
         compose.onNodeWithText("Текст тестового обращения").assertExists()
-        compose.onNodeWithTag("site-select-Обращение").performScrollTo().performClick()
-        compose.onNodeWithTag("site-option-52").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Меню чата").performClick()
+        compose.onNodeWithText("Поиск в чате").assertIsDisplayed()
         pressBack()
-        compose.onNodeWithTag("site-option-52").assertDoesNotExist()
+        compose.onNodeWithText("Поиск в чате").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Отправить").assertExists()
+        pressBack()
+        compose.onNodeWithTag("support-chat-52").assertExists()
         compose.runOnIdle { assertFalse(closed) }
-        compose.onNodeWithText("Отправить ответ").assertExists()
         pressBack()
         compose.onNodeWithText("Админ-меню").assertExists()
     }
@@ -150,6 +152,9 @@ class SystemBackNavigationTest {
 private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boolean = false) : ApiClient(context, "https://back-smoke.invalid") {
     val reads = CopyOnWriteArrayList<String>()
     init { userId = id }
+    private fun supportChat() = JSONObject().put("id", 52).put("user_id", 44)
+        .put("title", "Читатель").put("preview", "Текст тестового обращения").put("status", "open")
+
     override suspend fun getCart(expectedUserId: Long): JSONObject {
         check(userId == expectedUserId)
         return get("/api/store/cart")
@@ -172,8 +177,16 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
             path.startsWith("/api/admin/users?") -> { check(admin); JSONObject().put("items", JSONArray().put(listedUser())) }
             path == "/api/admin/users/44/dossier" -> { check(admin); JSONObject().put("tables", JSONArray().put(
                 JSONObject().put("table", "miniapp_users").put("rows", JSONArray().put(listedUser())))) }
-            path.startsWith("/api/admin/support/tickets?") -> { check(admin); JSONObject().put("items", JSONArray().put(
-                JSONObject().put("id", 52).put("user_id", 44).put("username", "Читатель").put("question_text", "Текст тестового обращения").put("answer_text", ""))) }
+            path.startsWith("/api/admin/support/chats/52?") -> {
+                check(admin)
+                JSONObject().put("chat", supportChat()).put("items", JSONArray().put(
+                    JSONObject().put("id", 101).put("sender_role", "user").put("body", "Текст тестового обращения")
+                ))
+            }
+            path.startsWith("/api/admin/support/chats?") -> {
+                check(admin)
+                JSONObject().put("items", JSONArray().put(supportChat()))
+            }
             else -> throw AssertionError("Unexpected GET $path")
         }
     }

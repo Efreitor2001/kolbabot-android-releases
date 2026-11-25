@@ -78,7 +78,7 @@ import java.util.Locale
     }
     when (visibleRoute) {
         "orders" -> Column { TextButton(onClick = { route = "account" }) { Text("‹ Кабинет") }; Box(Modifier.weight(1f)) { OrdersScreen(api, initialOrderId.ifBlank { selectedAccountOrder }) { selectedAccountOrder = ""; onOrderOpened() } } }
-        "support" -> Column { TextButton(onClick = { route = "account" }) { Text("‹ Кабинет") }; Box(Modifier.weight(1f)) { SupportScreen(api) } }
+        "support" -> SupportChatScreen(api, onBack = { route = "account" })
         "notifications" -> NotificationsScreen(api) { route = "account" }
         "subscription" -> SubscriptionScreen(api) { route = "account" }
         "email" -> EmailScreen(api, identity.user!!, onConfirmed = identity.refresh) { route = "account" }
