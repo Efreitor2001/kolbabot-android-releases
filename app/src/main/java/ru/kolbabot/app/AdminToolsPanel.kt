@@ -30,7 +30,8 @@ import org.json.JSONObject
     val scope = rememberCoroutineScope()
     val refreshAppearance = LocalRefreshAppearance.current
     OnResume { revision++ }
-    LaunchedEffect(api, revision) {
+    val toolsUpdates = liveRevision(api, "billing", "plans", "appearance", "users")
+    LaunchedEffect(api, revision, toolsUpdates) {
         error = ""
         try { bootstrap = api.get("/api/admin/bootstrap") }
         catch (cancelled: CancellationException) { throw cancelled }

@@ -43,7 +43,8 @@ internal fun AdminUserPicker(api: ApiClient, selectedId: Long?, onSelected: (Lon
     var lookupUser by remember(api, owner, query) { mutableStateOf<JSONObject?>(null) }
     var lookupBusy by remember(api, owner, query) { mutableStateOf(false) }
     var lookupError by remember(api, owner, query) { mutableStateOf("") }
-    LaunchedEffect(api, owner, revision) {
+    val userUpdates = liveRevision(api, "users")
+    LaunchedEffect(api, owner, revision, userUpdates) {
         loading = true; error = ""
         try {
             val result = api.get("/api/admin/users?limit=2000").items("items").filter { it.optLong("id") > 0 }.distinctBy { it.optLong("id") }

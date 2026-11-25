@@ -73,8 +73,10 @@ fun AdminContentScreen(api: ApiClient, section: String, onBack: () -> Unit) {
     var catalogSausageKey by rememberSaveable(section) { mutableStateOf("") }
     var deletion by remember { mutableStateOf<JSONObject?>(null) }
     val title = mapOf("catalog" to "Категории и сорта", "handbook" to "Редактор справочника", "articles" to "Редактор статей", "recipes" to "Рецептуры: текст и ингредиенты", "faq" to "Редактор FAQ", "equipment" to "Оборудование")[section] ?: "Материалы"
-    LaunchedEffect(reload, section) {
-        loading = true; error = ""
+    val contentUpdates = liveRevision(api, when (section) { "catalog" -> "recipes"; else -> section })
+    LaunchedEffect(reload, section, contentUpdates, editor.isEmpty()) {
+        if (editor.isNotEmpty()) return@LaunchedEffect
+        loading = bootstrap == null; error = ""
         try { bootstrap = api.get("/api/admin/bootstrap") }
         catch (e: Exception) { error = acError(e) } finally { loading = false }
     }

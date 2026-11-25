@@ -109,6 +109,19 @@ internal fun TsehScreen(api: ApiClient, userId: Long, onStore: (Long) -> Unit, o
         }
     }
 
+    val tsehUpdates = liveRevision(api, "tseh", "orders", "catalog")
+    var seenTsehUpdates by remember(api, userId) { mutableStateOf(tsehUpdates) }
+    LaunchedEffect(tsehUpdates, document != null) {
+        val active = document ?: return@LaunchedEffect
+        if (seenTsehUpdates == tsehUpdates) return@LaunchedEffect
+        seenTsehUpdates = tsehUpdates
+        try {
+            val next = loadTsehDocument(api)
+            if (active.hasAccess != next.hasAccess) reload++ else document = next
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) { /* Preserve the active calculator and its draft. */ }
+    }
     LaunchedEffect(api, userId, reload) {
         snapshot = null
         document = null

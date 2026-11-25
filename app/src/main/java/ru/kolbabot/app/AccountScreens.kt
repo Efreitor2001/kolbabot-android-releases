@@ -162,7 +162,8 @@ import java.util.Locale
     var data by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
-    LaunchedEffect(api, refresh) {
+    val orderUpdates = liveRevision(api, "orders", "account")
+    LaunchedEffect(api, refresh, orderUpdates) {
         error = ""
         try { data = api.get("/api/store/orders") }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -286,7 +287,8 @@ import java.util.Locale
         pending = ""; paymentUrl = ""
     }
     OnResume { refresh++ }
-    LaunchedEffect(refresh) {
+    val billingUpdates = liveRevision(api, "account", "plans")
+    LaunchedEffect(refresh, billingUpdates) {
         error = ""
         try {
             billing = api.get("/api/account/billing"); offers = api.get("/api/bootstrap").optJSONObject("payments")

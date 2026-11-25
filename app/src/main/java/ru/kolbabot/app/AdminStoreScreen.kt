@@ -33,7 +33,8 @@ internal fun adminProductPayload(product: JSONObject): JSONObject = JSONObject()
     var search by rememberSaveable { mutableStateOf("") }; var pendingDelete by remember { mutableStateOf<JSONObject?>(null) }
     var expandedItem by rememberSaveable(route, search) { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(revision) { busy = true; error = ""; try { data = api.get("/api/store?include_inactive=1") }
+    val catalogUpdates = liveRevision(api, "catalog", "catalog_admin")
+    LaunchedEffect(revision, catalogUpdates) { busy = true; error = ""; try { data = api.get("/api/store?include_inactive=1") }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message.orEmpty() } finally { busy = false } }
     fun refresh() { selected = ""; revision++ }

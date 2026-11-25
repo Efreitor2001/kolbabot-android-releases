@@ -61,7 +61,7 @@ internal fun AdminChrome(user: JSONObject, state: SiteChromeState?, section: Str
                 SiteThemeButton()
                 if (state != null) {
                     IconButton(state.onNotifications, Modifier.size(38.dp, 42.dp)) {
-                        Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(19.dp), tint = SiteColors.Ink)
+                        SiteNotificationIcon(state.unreadNotifications)
                     }
                     Box {
                         OutlinedIconButton({ accountMenuOpen = true }, Modifier.size(40.dp), shape = RoundedCornerShape(11.dp)) {

@@ -67,14 +67,15 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
     val dashboardScroll = rememberScrollState()
     OnResume { revision++ }
     BackHandler(onBack = onBack)
-    LaunchedEffect(api, revision) {
+    val dashboardUpdates = liveRevision(api, *liveTopics("/api/admin/dashboard"))
+    LaunchedEffect(api, revision, dashboardUpdates) {
         loading = true; error = ""
         try { data = api.get("/api/admin/dashboard") }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message ?: "Не удалось загрузить данные. Попробуйте обновить." }
         finally { loading = false }
     }
-    LaunchedEffect(api, revision, api.userId) {
+    LaunchedEffect(api, revision, api.userId, dashboardUpdates) {
         visitorsLoading = true; visitorsError = ""
         try {
             val result = api.get("/api/admin/analytics")

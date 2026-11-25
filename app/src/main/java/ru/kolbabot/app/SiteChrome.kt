@@ -25,6 +25,7 @@ internal class SiteChromeState {
     var analyticsEnabled by mutableStateOf(false)
     var socialLinks by mutableStateOf<JSONObject?>(null)
     var cartCount by mutableIntStateOf(0)
+    var unreadNotifications by mutableIntStateOf(0)
     var openCartRequest by mutableIntStateOf(0)
     var user by mutableStateOf<JSONObject?>(null)
     var access by mutableStateOf<JSONObject?>(null)
@@ -84,7 +85,7 @@ internal val LocalSiteChrome = staticCompositionLocalOf<SiteChromeState?> { null
                             }
                         } else {
                             IconButton(state.onNotifications, Modifier.size(if (compact) 36.dp else 38.dp, 40.dp)) {
-                                Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(19.dp), tint = SiteColors.Ink)
+                                SiteNotificationIcon(state.unreadNotifications)
                             }
                             Box {
                                 OutlinedIconButton({ menu = true }, Modifier.size(if (compact) 36.dp else 40.dp, 40.dp), shape = RoundedCornerShape(11.dp)) {
@@ -105,6 +106,15 @@ internal val LocalSiteChrome = staticCompositionLocalOf<SiteChromeState?> { null
             HorizontalDivider(color = SiteColors.Border)
             if (state.error.isNotBlank()) ErrorMessage(state.error)
         }
+    }
+}
+
+@Composable internal fun SiteNotificationIcon(count: Int) {
+    BadgedBox(badge = {
+        if (count > 0) Badge { Text(if (count > 99) "99+" else count.toString()) }
+    }) {
+        val label = if (count > 0) "Уведомления. Непрочитанных: $count" else "Уведомления"
+        Icon(painterResource(R.drawable.ic_stat_notification), label, Modifier.size(19.dp), tint = SiteColors.Ink)
     }
 }
 

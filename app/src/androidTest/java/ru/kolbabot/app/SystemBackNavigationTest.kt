@@ -129,6 +129,20 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Список материалов").assertExists()
     }
 
+    @Test fun supportOpensOneThreadAndShowsTheAdministratorInsteadOfCustomerId() {
+        val api = BackFakeApi(context, accountId)
+        compose.setContent { KolbaTheme { SupportChatScreen(api, onBack = {}) } }
+        compose.onNodeWithText("Ответ администратора").assertIsDisplayed()
+        compose.onNodeWithText("Анна · ID 11").assertIsDisplayed()
+        compose.onNodeWithText("ID 44").assertDoesNotExist()
+        compose.onNodeWithTag("support-chat-52").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Новое обращение").assertDoesNotExist()
+        compose.runOnIdle {
+            assertTrue(api.reads.any { it.startsWith("/api/support/chats/me?") })
+            assertFalse(api.reads.any { it.startsWith("/api/support/chats?") })
+        }
+    }
+
     @Test fun supportMenuBackClosesMenuThenChatThenSupport() {
         val api = BackFakeApi(context, accountId, admin = true)
         var closed by mutableStateOf(false)
@@ -180,6 +194,11 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
             path.startsWith("/api/admin/users?") -> { check(admin); JSONObject().put("items", JSONArray().put(listedUser())) }
             path == "/api/admin/users/44/dossier" -> { check(admin); JSONObject().put("tables", JSONArray().put(
                 JSONObject().put("table", "miniapp_users").put("rows", JSONArray().put(listedUser())))) }
+            path.startsWith("/api/support/chats/me?") -> JSONObject()
+                .put("chat", supportChat().put("title", "Поддержка"))
+                .put("items", JSONArray().put(JSONObject().put("id", 102)
+                    .put("sender_role", "admin").put("admin_id", 11).put("admin_name", "Анна")
+                    .put("body", "Ответ администратора")))
             path.startsWith("/api/admin/support/chats/52?") -> {
                 check(admin)
                 JSONObject().put("chat", supportChat()).put("items", JSONArray().put(

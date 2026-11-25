@@ -97,7 +97,8 @@ fun AdminBannersScreen(api: ApiClient, onBack: (() -> Unit)? = null) {
 
     fun leave() { if (dirty) confirmLeave = true else onBack?.invoke() }
     BackHandler(onBack != null) { leave() }
-    LaunchedEffect(api.userId) { if (!loaded) loadServer() }
+    val bannerUpdates = liveRevision(api, "catalog")
+    LaunchedEffect(api.userId, bannerUpdates) { if (!busy && !dirty) loadServer() }
 
     if (confirmLeave) AlertDialog(onDismissRequest = { confirmLeave = false }, title = { Text("Выйти без сохранения?") }, text = { Text("Изменения баннеров ещё не опубликованы.") }, confirmButton = {
         TextButton(onClick = { confirmLeave = false; onBack?.invoke() }) { Text("Выйти") }

@@ -101,11 +101,13 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     LaunchedEffect(initialProductId) {
         if (initialProductId > 0) { productId = initialProductId; route = "product"; onProductOpened() }
     }
-    LaunchedEffect(api, revision) {
+    val catalogUpdates = liveRevision(api, "catalog", "account")
+    val cartUpdates = liveRevision(api, "cart")
+    LaunchedEffect(api, revision, catalogUpdates) {
         error = ""
         try { catalog = api.get("/api/store") } catch (e: Exception) { error = storeFailure(e) }
     }
-    LaunchedEffect(api, catalog, api.userId, cartRevision) {
+    LaunchedEffect(api, catalog, api.userId, cartRevision, cartUpdates) {
         val products = catalog ?: return@LaunchedEffect
         val owner = api.userId
         cartLoading = true; cartError = ""
@@ -466,7 +468,8 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
                 if (p.items("reviews").isEmpty()) Text("Отзывов пока нет")
             }
             if (p.optBoolean("can_review") || p.items("reviews").any { it.optBoolean("is_mine") }) SectionCard("Ваш отзыв") {
-                LaunchedEffect(id) {
+                val productUpdates = liveRevision(api, "catalog")
+                LaunchedEffect(id, productUpdates) {
                     p.items("reviews").firstOrNull { it.optBoolean("is_mine") }?.let {
                         rating = it.optInt("rating", 5); review = it.optString("review_text")
                     }
