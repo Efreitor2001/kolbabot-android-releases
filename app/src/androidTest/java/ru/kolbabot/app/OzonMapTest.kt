@@ -95,10 +95,12 @@ class OzonMapTest {
             val start = range.first.toInt()
             val end = minOf(range.last.toInt(), fixture.lastIndex)
             tileReads.incrementAndGet()
+            if (start > fixture.lastIndex) return WebResourceResponse("text/plain", null, 416, "Range Not Satisfiable",
+                mapOf("Content-Range" to "bytes */${fixture.size}", "Cache-Control" to "no-store"), ByteArrayInputStream(ByteArray(0)))
             return WebResourceResponse("application/octet-stream", null, 206, "Partial Content", mapOf(
                 "Content-Range" to "bytes $start-$end/${fixture.size}", "Content-Length" to (end - start + 1).toString(),
                 "Accept-Ranges" to "bytes", "Access-Control-Allow-Origin" to "https://map-fixture.invalid",
-                "Access-Control-Expose-Headers" to "Content-Range, Content-Length, Accept-Ranges",
+                "Access-Control-Expose-Headers" to "Content-Range, Content-Length, Accept-Ranges", "Cache-Control" to "no-store",
             ), ByteArrayInputStream(fixture.copyOfRange(start, end + 1)))
         }
         if (uri.host == "map-fixture.invalid") return null // Real production asset loader.

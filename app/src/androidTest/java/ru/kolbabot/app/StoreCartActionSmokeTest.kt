@@ -50,7 +50,7 @@ class StoreCartActionSmokeTest {
         compose.onNodeWithContentDescription("Закрыть корзину").performClick()
 
         compose.runOnIdle { api.failWrites = true }
-        compose.onNodeWithTag("store-quantity-input-101").performTextReplacement("10")
+        compose.onNodeWithTag("store-quantity-input-101").performScrollTo().performTextReplacement("10")
         compose.onNodeWithTag("store-quantity-input-101").performImeAction()
         compose.onNodeWithTag("store-quantity-input-101").assertTextEquals("2")
         compose.onNodeWithText("Проверочная ошибка сохранения").assertExists()
@@ -58,7 +58,7 @@ class StoreCartActionSmokeTest {
 
         compose.onNodeWithTag("store-variant-102").performScrollTo().performClick()
         compose.onNodeWithTag("store-add-102").assertExists()
-        compose.onNodeWithTag("store-add-102").performClick()
+        compose.onNodeWithTag("store-add-102").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithTag("store-quantity-input-102").assertTextEquals("1")
         compose.onNodeWithTag("store-variant-101").performScrollTo().performClick()
         compose.onNodeWithTag("store-quantity-input-101").assertTextEquals("2")

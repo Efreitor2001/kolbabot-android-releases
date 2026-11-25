@@ -289,11 +289,17 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                         style = MaterialTheme.typography.labelSmall, color = SiteColors.Rating)
                 }
             }
-            if (variants.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                variants.forEach { variant -> FilterChip(variant.optLong("id") == id, { onVariant(variant.optLong("id")) },
-                    { Text(variant.optString("variant_label").ifBlank { variant.optString("title") } + " · " + money(variant.optLong("price_kopecks"))) },
-                    Modifier.testTag("store-variant-${variant.optLong("id")}"),
-                    colors = storeVariantColors(), border = storeVariantBorder(variant.optLong("id") == id), shape = RoundedCornerShape(10.dp)) }
+            if (variants.size > 1) CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    variants.forEach { variant ->
+                        val variantId = variant.optLong("id")
+                        FilterChip(variantId == id, { onVariant(variantId) }, {
+                            Text(variant.optString("variant_label").ifBlank { variant.optString("title") },
+                                fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }, Modifier.heightIn(min = 30.dp).testTag("store-variant-$variantId"),
+                            colors = storeVariantColors(), border = storeVariantBorder(variantId == id), shape = RoundedCornerShape(8.dp))
+                    }
+                }
             }
             Text(money(product.optLong("price_kopecks")), color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
@@ -316,28 +322,30 @@ private fun StoreQuantityControl(id: Long, quantity: Int, busy: Boolean,
     LaunchedEffect(id, quantity, busy, focused) {
         if (!busy && !focused) input = quantity.toString()
     }
-    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).background(SiteColors.Soft, RoundedCornerShape(12.dp))
-        .testTag("store-quantity-$id"), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center) {
-        TextButton({ onChange(id, -1) }, Modifier.size(48.dp).semantics { contentDescription = "Уменьшить количество" },
-            enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand)) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
-        BasicTextField(input, { value -> input = value.filter(Char::isDigit).take(3) },
-            Modifier.width(48.dp).heightIn(min = 48.dp).testTag("store-quantity-input-$id")
-                .semantics { contentDescription = "Количество товара" }
-                .onFocusChanged { state ->
-                    if (focused && !state.isFocused && !busy) {
-                        val next = (input.toIntOrNull() ?: 0).coerceIn(0, 999)
-                        if (next != quantity) onSet(id, next)
-                    }
-                    focused = state.isFocused
-                },
-            enabled = !busy, singleLine = true,
-            textStyle = TextStyle(color = SiteColors.Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } })
-        TextButton({ onChange(id, 1) }, Modifier.size(48.dp).semantics { contentDescription = "Увеличить количество" },
-            enabled = !busy && quantity < 999, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand)) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 42.dp).background(SiteColors.Soft, RoundedCornerShape(9.dp))
+            .testTag("store-quantity-$id").padding(3.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            TextButton({ onChange(id, -1) }, Modifier.size(34.dp).semantics { contentDescription = "Уменьшить количество" },
+                enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand), contentPadding = PaddingValues(0.dp)) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+            BasicTextField(input, { value -> input = value.filter(Char::isDigit).take(3) },
+                Modifier.weight(1f).heightIn(min = 34.dp).testTag("store-quantity-input-$id")
+                    .semantics { contentDescription = "Количество товара" }
+                    .onFocusChanged { state ->
+                        if (focused && !state.isFocused && !busy) {
+                            val next = (input.toIntOrNull() ?: 0).coerceIn(0, 999)
+                            if (next != quantity) onSet(id, next)
+                        }
+                        focused = state.isFocused
+                    },
+                enabled = !busy, singleLine = true,
+                textStyle = TextStyle(color = SiteColors.Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } })
+            TextButton({ onChange(id, 1) }, Modifier.size(34.dp).semantics { contentDescription = "Увеличить количество" },
+                enabled = !busy && quantity < 999, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand), contentPadding = PaddingValues(0.dp)) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+        }
     }
 }
 
