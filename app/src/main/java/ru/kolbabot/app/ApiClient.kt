@@ -29,7 +29,12 @@ import javax.crypto.spec.GCMParameterSpec
 
 class KolbaApplication : Application() {
     val api by lazy { ApiClient(this) }
-    override fun onCreate() { super.onCreate(); initializePush(this) }
+    override fun onCreate() {
+        super.onCreate()
+        // Retire work scheduled by earlier builds; native sessions no longer need heartbeats.
+        androidx.work.WorkManager.getInstance(this).cancelUniqueWork("kolbabot_session_keep_alive")
+        initializePush(this)
+    }
 }
 
 class ApiException(val status: Int, override val message: String, val details: JSONObject = JSONObject()) : IOException(message)
@@ -91,6 +96,31 @@ internal class SessionVault(context: Context, preferenceName: String = "secure_s
     fun clear() { preferences.edit().clear().apply() }
 }
 
+/**
+ * Converts the site's HttpOnly cookies to the encrypted on-device session format.
+ * Native authentication has no local time limit. Only an explicit cookie deletion
+ * or server-side revocation removes it, including cookies saved by older builds.
+ */
+internal fun persistSessionCookie(cookie: HttpCookie, now: Long): JSONObject? {
+    // The encrypted vault is populated only from same-origin auth responses. Keep
+    // the cookie even if Android's CookieManager drops the HttpOnly marker.
+    if (cookie.maxAge == 0L) return null
+    return JSONObject().put("name", cookie.name).put("value", cookie.value)
+        .put("path", cookie.path ?: "/").put("expires", 0L)
+}
+
+internal fun restoreSessionCookie(item: JSONObject, now: Long): HttpCookie? {
+    return runCatching {
+        HttpCookie(item.getString("name"), item.getString("value")).apply {
+            path = item.optString("path", "/")
+            secure = true
+            isHttpOnly = true
+            maxAge = -1
+            version = 0
+        }
+    }.getOrNull()
+}
+
 open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_URL) {
     private val applicationContext = context.applicationContext
     private val vault = SessionVault(context.applicationContext)
@@ -109,12 +139,8 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
             val saved = JSONObject(vault.read() ?: "{}")
             if (saved.optString("origin") == baseUrl) {
                 val now = System.currentTimeMillis()
-                saved.items("cookies").forEach { item ->
-                    val remaining = (item.optLong("expires") - now) / 1000
-                    if (remaining > 0) cookies.cookieStore.add(URI(baseUrl), HttpCookie(item.getString("name"), item.getString("value")).apply {
-                        path = item.optString("path", "/"); secure = true; isHttpOnly = true; maxAge = remaining; version = 0
-                    })
-                }
+                saved.items("cookies").mapNotNull { restoreSessionCookie(it, now) }
+                    .forEach { cookies.cookieStore.add(URI(baseUrl), it) }
             }
         }.onFailure { vault.clear() }
     }
@@ -122,11 +148,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
     private fun saveSession() {
         val now = System.currentTimeMillis()
         val list = JSONArray()
-        cookies.cookieStore.cookies.filter { !it.hasExpired() && it.isHttpOnly }.forEach { cookie ->
-            // Persistent site cookies have Max-Age; session-only cookies deliberately remain memory-only.
-            if (cookie.maxAge > 0) list.put(JSONObject().put("name", cookie.name).put("value", cookie.value)
-                .put("path", cookie.path ?: "/").put("expires", now + cookie.maxAge * 1000))
-        }
+        cookies.cookieStore.cookies.mapNotNull { persistSessionCookie(it, now) }.forEach { list.put(it) }
         if (list.length() == 0) vault.clear() else vault.write(JSONObject().put("origin", baseUrl).put("cookies", list).toString())
     }
 
@@ -317,6 +339,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
                 if (anonymous && receivesSession) cookies.cookieStore.removeAll()
                 val responseHeaders = connection.headerFields.filterKeys { it != null }
                 cookies.put(uri, responseHeaders)
+                cookies.cookieStore.cookies.forEach { it.maxAge = -1 }
                 if (responseHeaders.keys.any { it.equals("Set-Cookie", true) }) saveSession()
             }
             val headerCsrf = connection.getHeaderField("X-CSRF-Token") ?: ""

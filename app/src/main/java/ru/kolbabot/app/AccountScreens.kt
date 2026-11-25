@@ -45,6 +45,7 @@ import java.util.Locale
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var logoutConfirmation by remember { mutableStateOf(false) }
+    var revokeSessionsConfirmation by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val currentLogout by rememberUpdatedState(onLogout)
@@ -103,9 +104,12 @@ import java.util.Locale
                 }
             }, afterBilling = {
                 var connectionsExpanded by rememberSaveable { mutableStateOf(false) }
-                SiteDisclosure("Способы входа", connectionsExpanded, { connectionsExpanded = !connectionsExpanded },
+                SiteDisclosure("Безопасность", connectionsExpanded, { connectionsExpanded = !connectionsExpanded },
                     summary = "Google, VK ID, Mail.ru и Одноклассники могут вести в один кабинет.") {
                     LinkedAccountsScreen(api, identity.user!!, {}, embedded = true)
+                    Button(enabled = !busy, onClick = { revokeSessionsConfirmation = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError)) { Text("Завершить все сессии") }
                 }
                 var ordersExpanded by rememberSaveable { mutableStateOf(false) }
                 SiteDisclosure("История заказов", ordersExpanded, { ordersExpanded = !ordersExpanded },
@@ -125,6 +129,19 @@ import java.util.Locale
                 OutlinedButton(enabled = !busy, onClick = { logoutConfirmation = true }) { Text("Выйти") }
             })
     }
+    if (revokeSessionsConfirmation) AlertDialog(onDismissRequest = { if (!busy) revokeSessionsConfirmation = false },
+        title = { Text("Завершить все остальные сессии?") },
+        text = { Text("Текущая сессия останется активной.") },
+        confirmButton = { TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = {
+            busy = true; error = ""
+            scope.launch {
+                try { api.post("/api/auth/sessions/revoke-others") }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { error = failure.message ?: "Не удалось завершить сессии." }
+                finally { busy = false; revokeSessionsConfirmation = false }
+            }
+        }) { Text("Завершить") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = { revokeSessionsConfirmation = false }) { Text("Отмена") } })
     if (logoutConfirmation) AlertDialog(onDismissRequest = { logoutConfirmation = false }, title = { Text("Выйти из аккаунта?") },
         text = { Text("Заказы и данные останутся на сервере. Для доступа нужно будет войти снова.") },
         confirmButton = { TextButton(enabled = !busy, onClick = {

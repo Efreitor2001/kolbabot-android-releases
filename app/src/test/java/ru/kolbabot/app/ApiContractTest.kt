@@ -2,6 +2,7 @@ package ru.kolbabot.app
 
 import org.junit.Assert.*
 import org.junit.Test
+import java.net.HttpCookie
 
 class ApiContractTest {
     @Test fun resolveApiPathKeepsSameHttpsOriginAndQuery() {
@@ -37,5 +38,38 @@ class ApiContractTest {
         val failure = assertThrows(ApiException::class.java) { ApiContract.unwrap(502, "<html>Proxy failure private internal host</html>") }
         assertEquals(502, failure.status)
         assertFalse(failure.message.contains("internal host"))
+    }
+
+    @Test fun sessionCookieSurvivesAppRestartUntilServerOrLogoutClearsIt() {
+        val now = 1_000_000L
+        val cookie = HttpCookie("session", "signed-value").apply {
+            isHttpOnly = true
+            secure = true
+            path = "/"
+        }
+
+        val saved = persistSessionCookie(cookie, now)!!
+        assertEquals(0L, saved.getLong("expires"))
+
+        val restored = restoreSessionCookie(saved, now + 30L * 24 * 60 * 60 * 1000)!!
+        assertEquals("signed-value", restored.value)
+        assertEquals(-1L, restored.maxAge)
+    }
+
+    @Test fun legacyTimedCookieIsMigratedToServerRevocableNativeSession() {
+        val now = 1_000_000L
+        val cookie = HttpCookie("session", "signed-value").apply {
+            isHttpOnly = true
+            maxAge = 3600
+        }
+        val saved = persistSessionCookie(cookie, now)!!
+        assertEquals(0L, saved.getLong("expires"))
+        saved.put("expires", now + 3_600_000L)
+        assertEquals(-1L, restoreSessionCookie(saved, now + 90L * 24 * 60 * 60 * 1000)!!.maxAge)
+    }
+
+    @Test fun explicitCookieDeletionIsNotPersisted() {
+        val cookie = HttpCookie("session", "").apply { maxAge = 0 }
+        assertNull(persistSessionCookie(cookie, 1_000_000L))
     }
 }
