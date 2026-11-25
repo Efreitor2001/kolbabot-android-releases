@@ -50,17 +50,20 @@ jobs:
       - name: Run JVM tests and lint
         run: ./gradlew --no-daemon --stacktrace --max-workers=2 testGoogleDebugUnitTest lintGoogleDebug
       - name: Package APKs with checksums
+        id: package_apks
         run: |
+          version=$(jq -er '.elements[0].versionName' app/build/outputs/apk/google/debug/output-metadata.json)
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           mkdir -p ci-artifacts
           for channel in google rustore huawei; do
-            cp "app/build/outputs/apk/$channel/debug/app-$channel-debug.apk" "ci-artifacts/KolbaBot-1.0.2-$channel-debug.apk"
+            cp "app/build/outputs/apk/$channel/debug/app-$channel-debug.apk" "ci-artifacts/KolbaBot-$version-$channel-debug.apk"
           done
           cd ci-artifacts
           sha256sum *.apk > SHA256SUMS.txt
       - name: Upload APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: KolbaBot-1.0.2-debug-apks
+          name: KolbaBot-${{ steps.package_apks.outputs.version }}-debug-apks
           path: ci-artifacts/
           if-no-files-found: error
           retention-days: 14
