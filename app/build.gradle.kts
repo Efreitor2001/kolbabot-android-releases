@@ -174,6 +174,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("io.github.dokar3:quickjs-kt-android:1.0.18")
     implementation("org.jsoup:jsoup:1.21.2")
+    implementation("org.maplibre.gl:android-sdk-opengl:13.6.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

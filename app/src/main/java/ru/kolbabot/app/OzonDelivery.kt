@@ -2,7 +2,6 @@ package ru.kolbabot.app
 
 import org.json.JSONObject
 import java.net.URI
-import java.net.URLDecoder
 
 /** Shared contract for the native checkout and the isolated map renderer. */
 internal object OzonDelivery {
@@ -44,20 +43,9 @@ internal object OzonDelivery {
         }
     }
 
-    /** A map script can only read these three endpoints, never arbitrary session APIs. */
-    fun allowedMapPath(path: String): Boolean = runCatching {
-        if (path.length > 8192 || path.contains('\\')) return false
-        val uri = URI(path)
-        if (uri.isAbsolute || uri.rawAuthority != null || uri.rawFragment != null || uri.rawPath != uri.path) return false
-        val allowed = when (uri.path) {
-            "${API}map-config" -> emptySet()
-            "${API}map-points" -> setOf("min_lat", "max_lat", "min_lon", "max_lon", "zoom")
-            "${API}map-point-info" -> setOf("ids", "source")
-            else -> return false
-        }
-        val query = uri.rawQuery.orEmpty()
-        query.isEmpty() || query.split('&').all {
-            URLDecoder.decode(it.substringBefore('='), "UTF-8") in allowed
-        }
-    }.getOrDefault(false)
+    fun basemapUrl(value: String): String? = runCatching {
+        if (value.any { it <= ' ' || it == '\\' }) return null
+        URI(value).takeIf { it.scheme == "https" && !it.host.isNullOrBlank() && it.userInfo == null &&
+            it.fragment == null && it.path.endsWith(".pmtiles", ignoreCase = true) }?.toASCIIString()
+    }.getOrNull()
 }
