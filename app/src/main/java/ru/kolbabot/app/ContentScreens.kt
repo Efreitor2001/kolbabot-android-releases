@@ -614,52 +614,6 @@ private fun ReactionButtons(item: JSONObject, enabled: Boolean, onReaction: (Int
     }
 }
 
-@Composable
-fun SupportScreen(api: ApiClient) {
-    val scope = rememberCoroutineScope()
-    var text by rememberSaveable { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-    RemotePage("Поддержка", api, "/api/support/tickets/my", subtitle = "Опишите ситуацию своими словами. Ответ появится здесь же, в истории обращений.", eyebrow = "Связь с нами") { data, refresh ->
-        SectionCard("Чем помочь?") {
-            OutlinedTextField(text, { if (it.length <= 5000) text = it }, label = { Text("Сообщение") }, supportingText = { Text("${text.length}/5000") }, minLines = 4, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-            Button(enabled = !busy && text.trim().length >= 5, onClick = {
-                scope.launch {
-                    busy = true; error = ""; message = ""
-                    try {
-                        val response = api.post("/api/support/tickets", JSONObject().put("text", text.trim()))
-                        message = "Обращение №${response.optInt("ticket_id")} отправлено."
-                        text = ""; refresh()
-                    } catch (e: Exception) { error = contentFailure(e) } finally { busy = false }
-                }
-            }) { Text(if (busy) "Отправка…" else "Отправить") }
-            Text("После отправки появится номер обращения.", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
-            if (error.isNotBlank()) ErrorMessage(error)
-            if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.primary)
-        }
-        SectionCard {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Мои обращения", style = MaterialTheme.typography.titleLarge)
-            TextButton(enabled = !busy, onClick = refresh) { Text("Обновить") }
-        }
-        val tickets = data.items("items")
-        if (tickets.isEmpty()) Text("У вас пока нет обращений.")
-        tickets.forEach { ticket ->
-            SectionCard("№${ticket.optInt("id")} · ${if (ticket.optBoolean("is_answered")) "Есть ответ" else "Ожидает ответа"}") {
-                Text(ticket.optString("created_at").replace('T', ' ').take(16), style = MaterialTheme.typography.bodySmall)
-                Text(ticket.optString("question_text"))
-                if (ticket.optString("answer_text").isNotBlank()) {
-                    HorizontalDivider()
-                    Text("Ответ поддержки", style = MaterialTheme.typography.titleSmall)
-                    Text(ticket.optString("answer_text"))
-                }
-            }
-        }
-        }
-    }
-}
-
 /** Native Android text and images preserve article formatting without embedding a browser. */
 @Composable
 private fun ContentHtml(api: ApiClient, source: String) {
