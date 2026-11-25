@@ -159,7 +159,7 @@ class OzonMapTest {
     }
 }
 
-/** A tiny valid PMTiles v3 archive with one real MVT water polygon at zoom 0. */
+/** A PMTiles v3 archive with one real MVT water polygon at zoom 0. */
 private fun pmtilesFixture(): ByteArray {
     fun integers(vararg values: Int): ByteArray = ByteArrayOutputStream().apply {
         values.forEach { original ->
@@ -186,5 +186,6 @@ private fun pmtilesFixture(): ByteArray {
     header.put(1).put(1).put(1).put(1).put(0).put(0)
     header.putInt(-1800000000).putInt(-850000000).putInt(1800000000).putInt(850000000)
     header.put(0).putInt(375738560).putInt(557515740)
-    return header.array() + directory + metadata + tile
+    // Keep the initial 16 KiB PMTiles read in-range, as with the production archive.
+    return header.array() + directory + metadata + tile + ByteArray(16_384)
 }

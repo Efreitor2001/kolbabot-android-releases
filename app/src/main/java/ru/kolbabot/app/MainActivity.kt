@@ -182,7 +182,11 @@ class MainActivity : ComponentActivity() {
         LocalRefreshAppearance provides { appearanceRevision++ }) {
         Scaffold(bottomBar = {
             Column {
-            if (!checking && tab !in setOf(5, 6) && analyticsConsent == AnalyticsConsent.UNDECIDED) AnalyticsConsentCard(api)
+            if (!checking && tab !in setOf(5, 6) && analyticsConsent == AnalyticsConsent.UNDECIDED) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp), contentAlignment = Alignment.Center) {
+                    AnalyticsConsentCard(api, Modifier.widthIn(max = 420.dp))
+                }
+            }
             if (tab !in setOf(5, 6) && (checking || user != null || tab != 4)) {
             SiteBottomNavigation(selectedSection, moreOpen) { section ->
                 if (section == "more") moreOpen = true else {

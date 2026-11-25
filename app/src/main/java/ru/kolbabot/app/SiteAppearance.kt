@@ -9,11 +9,13 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +36,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.random.Random
@@ -44,19 +45,20 @@ internal val LocalNewYear = staticCompositionLocalOf { false }
 internal val LocalRefreshAppearance = staticCompositionLocalOf<() -> Unit> { {} }
 
 @Composable
-internal fun SiteThemeButton(showLabel: Boolean = false) {
+internal fun SiteThemeButton(iconWidth: Dp = 38.dp, bordered: Boolean = false) {
     val dark = LocalSiteDark.current
     val toggle = LocalToggleTheme.current
-    val label = if (dark) "Светлая тема" else "Тёмная тема"
+    val label = if (dark) "Включить светлую тему" else "Включить тёмную тему"
     val ink = SiteColors.Ink
-    if (showLabel) {
-        androidx.compose.material3.OutlinedButton(toggle, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)) {
+    val accessibility = Modifier.semantics { contentDescription = label }
+    if (bordered) {
+        OutlinedIconButton(toggle, Modifier.size(40.dp, 44.dp).then(accessibility), shape = RoundedCornerShape(11.dp),
+            border = BorderStroke(1.dp, SiteColors.Border),
+            colors = IconButtonDefaults.outlinedIconButtonColors(containerColor = SiteColors.Soft)) {
             ThemeGlyph(dark, ink)
-            Spacer(Modifier.width(6.dp))
-            Text(label, fontSize = 12.sp)
         }
     } else {
-        IconButton(toggle, Modifier.size(38.dp, 40.dp).semantics { contentDescription = "Включить " + label.lowercase() }) {
+        IconButton(toggle, Modifier.size(iconWidth, 40.dp).then(accessibility)) {
             ThemeGlyph(dark, ink)
         }
     }
@@ -106,7 +108,7 @@ internal fun SiteMascot(size: Dp, modifier: Modifier = Modifier, description: St
 internal fun FestiveHeader(content: @Composable () -> Unit) {
     val enabled = LocalNewYear.current
     Box(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().padding(top = if (enabled) 17.dp else 0.dp)) { content() }
+        Box(Modifier.fillMaxWidth().padding(top = if (enabled) 20.dp else 0.dp)) { content() }
         if (enabled) FestiveGarland()
     }
 }

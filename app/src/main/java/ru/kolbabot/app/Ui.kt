@@ -120,7 +120,8 @@ private fun siteType(size: Int, height: Int, weight: FontWeight = FontWeight.Nor
     val admin = LocalSiteAdmin.current
     val pageScroll = rememberScrollState()
     Column(Modifier.fillMaxSize().background(SiteColors.BackgroundTop)
-        .verticalScroll(pageScroll).padding(horizontal = 16.dp, vertical = 8.dp),
+        .verticalScroll(pageScroll).padding(horizontal = 16.dp)
+        .padding(top = if (!admin && onBack == null) 0.dp else 8.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (admin) CompositionLocalProvider(LocalAdminScrollOffset provides { pageScroll.value }) { LocalAdminChrome.current?.invoke() }
         if (!admin && onBack == null) LocalSiteChrome.current?.let { SiteChrome(it, scrollOffset = { pageScroll.value }) }

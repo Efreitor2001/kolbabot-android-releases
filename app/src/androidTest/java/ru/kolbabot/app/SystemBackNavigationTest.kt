@@ -1,6 +1,7 @@
 package ru.kolbabot.app
 
 import android.content.Context
+import android.view.KeyEvent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -119,7 +120,7 @@ class SystemBackNavigationTest {
         closeSoftKeyboard()
         pressBack()
         compose.onNodeWithText("Оставить изменения несохранёнными?").assertIsDisplayed()
-        pressBack()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithText("Оставить изменения несохранёнными?").assertDoesNotExist()
         compose.onNodeWithText("Изменённое").assertExists()
         compose.runOnIdle { assertFalse(closed) }

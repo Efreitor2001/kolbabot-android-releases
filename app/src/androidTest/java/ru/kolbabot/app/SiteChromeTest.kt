@@ -28,8 +28,8 @@ class SiteChromeTest {
             }
         } } }
         compose.onNodeWithText("Раздел 15").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Корзина: 0").assertIsDisplayed().performClick()
-        val top = compose.onNodeWithText("Корзина: 0").getUnclippedBoundsInRoot().top.value
+        compose.onNodeWithText("Корзина · 0").assertIsDisplayed().performClick()
+        val top = compose.onNodeWithText("Корзина · 0").getUnclippedBoundsInRoot().top.value
         assertTrue("Cart should remain near the top while scrolling; got $top dp", top in 8f..54f)
         compose.runOnIdle { assertEquals(1, opened) }
     }
@@ -47,7 +47,7 @@ class SiteChromeTest {
         compose.setContent { KolbaTheme { SiteChrome(header) } }
         compose.onNodeWithText("Цех", substring = false).assertIsDisplayed()
         compose.onNode(hasContentDescription("Включить", substring = true)).assertExists()
-        compose.onNodeWithText("Корзина: 3").performClick()
+        compose.onNodeWithContentDescription("Открыть корзину. Товаров: 3").performClick()
         compose.onNodeWithText("Войти", substring = false).performClick()
         compose.onNodeWithText("Выйти", substring = false).assertDoesNotExist()
         compose.onNodeWithContentDescription("Уведомления").assertDoesNotExist()

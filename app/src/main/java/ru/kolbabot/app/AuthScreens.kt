@@ -306,7 +306,7 @@ import androidx.compose.ui.unit.sp
     val selected = when (mode) { "register", "register_code" -> "register"; "reset", "reset_code" -> "reset"; else -> "login" }
     Column(Modifier.fillMaxSize().background(SiteColors.BackgroundTop)
         .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        verticalArrangement = Arrangement.spacedBy(28.dp)) {
         FestiveHeader {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -315,7 +315,7 @@ import androidx.compose.ui.unit.sp
                     SiteMascot(40.dp)
                     Text("Колбабот", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
                 }
-                SiteThemeButton(showLabel = true)
+                SiteThemeButton(bordered = true)
             }
         }
         Surface(Modifier.fillMaxWidth(), color = SiteColors.Surface, contentColor = SiteColors.Ink,

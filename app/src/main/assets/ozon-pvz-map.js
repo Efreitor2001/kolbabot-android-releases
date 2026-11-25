@@ -195,6 +195,10 @@ async function verifyPmtiles(url) {
   if (!/^bytes\s+0-126\//i.test(contentRange)) {
     throw new Error("CDN вернул некорректный Content-Range для PMTiles.");
   }
+  const header = await response.arrayBuffer();
+  if (header.byteLength !== 127) {
+    throw new Error("CDN вернул неполный заголовок PMTiles.");
+  }
 }
 
 function selectedPointCenter() {
@@ -268,6 +272,7 @@ async function ensureMap() {
     mapInstance.on("error", (event) => {
       const message = String(event?.error?.message || "");
       if (/pmtiles|failed to fetch|network/i.test(message)) {
+        console.warn("Ozon map:", message);
         setStatus("Не удалось прочитать базовую карту из CDN. Поиск ПВЗ ниже продолжает работать.", true);
       }
     });

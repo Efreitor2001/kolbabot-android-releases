@@ -62,7 +62,7 @@ class TsehNativeSmokeTest {
         compose.setContent { KolbaTheme { TsehScreen(api, 1, {}, {}, {}) } }
         waitForText("Как вас зовут?")
         compose.onNode(hasSetTextAction() and hasText("Как вас зовут?")).performScrollTo().performTextInput("Василий")
-        compose.onNodeWithText("4  Результат").performScrollTo().performClick()
+        compose.onNodeWithText("Результат").performScrollTo().performClick()
         waitForText("Ваш проект: Василий")
         compose.onNodeWithText("Ваш проект: Василий").assertExists()
     }
