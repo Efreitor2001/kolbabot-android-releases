@@ -79,7 +79,8 @@ private fun ColumnScope.RecipeDetail(api: ApiClient, slug: String, onOpenProduct
     var data by remember(slug) { mutableStateOf<JSONObject?>(null) }
     var loadError by remember(slug) { mutableStateOf("") }
     var reload by remember(slug) { mutableIntStateOf(0) }
-    LaunchedEffect(api, slug, reload) {
+    val recipeUpdates = liveRevision(api, "recipes", "calculator")
+    LaunchedEffect(api, slug, reload, recipeUpdates) {
         loadError = ""
         try { data = api.get("/api/recipes/${contentPath(slug)}") }
         catch (failure: Exception) { loadError = contentFailure(failure) }
@@ -450,7 +451,8 @@ private fun ColumnScope.HandbookDetail(api: ApiClient, section: String, article:
     var data by remember(section, article) { mutableStateOf<JSONObject?>(null) }
     var error by remember(section, article) { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
-    LaunchedEffect(api, section, article, refresh) {
+    val handbookUpdates = liveRevision(api, "handbook")
+    LaunchedEffect(api, section, article, refresh, handbookUpdates) {
         error = ""
         try { data = api.get("/api/handbook/${contentPath(section)}/${contentPath(article)}") }
         catch (failure: Exception) { error = contentFailure(failure) }

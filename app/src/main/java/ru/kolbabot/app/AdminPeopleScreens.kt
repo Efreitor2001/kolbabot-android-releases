@@ -137,7 +137,8 @@ private fun AdminUsersPeopleScreen(api: ApiClient, onBack: () -> Unit) {
     var newAdminName by rememberSaveable { mutableStateOf("") }
     var newAdminPassword by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(api, selectedId, revision) {
+    val userUpdates = liveRevision(api, "users", "orders_admin", "support_admin", "billing")
+    LaunchedEffect(api, selectedId, revision, userUpdates) {
         dossier = null; error = ""; loading = false
         if (selectedId <= 0) return@LaunchedEffect
         loading = true

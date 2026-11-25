@@ -129,6 +129,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
     private var csrf = ""
     private val expired = MutableStateFlow(0)
     val sessionExpiry = expired.asStateFlow()
+    internal val liveRevisions = MutableStateFlow<Map<String, String>>(emptyMap())
     internal val analytics by lazy { VisitorAnalytics(applicationContext) }
     @Volatile open var userId: Long = 0
         protected set(value) { field = value; analytics.confirmAccount(value); onPushAccountChanged(applicationContext, value) }
@@ -157,6 +158,18 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
     } }
 
     open suspend fun get(path: String): JSONObject = request("GET", path)
+
+    internal open suspend fun getLiveUpdates(cursor: String?, accountId: Long): JSONObject = withContext(Dispatchers.IO) {
+        val path = if (cursor == null) "/api/live/updates" else "/api/live/updates?since=$cursor"
+        val uri = ApiContract.endpoint(baseUrl, path)
+        val session = gate.withLock {
+            check(userId == accountId) { "Аккаунт изменился." }
+            cookies.get(uri, emptyMap()).mapValues { (_, values) -> values.joinToString("; ") }
+        }
+        val response = transport("GET", path, null, emptyMap(), sessionSnapshot = session)
+        check(userId == accountId) { "Аккаунт изменился." }
+        ApiContract.unwrap(response.status, String(response.bytes, Charsets.UTF_8))
+    }
     open suspend fun post(path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()): JSONObject = request("POST", path, body, headers)
     open suspend fun put(path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()): JSONObject = request("PUT", path, body, headers)
     open suspend fun patch(path: String, body: JSONObject = JSONObject(), headers: Map<String, String> = emptyMap()): JSONObject = request("PATCH", path, body, headers)
@@ -291,7 +304,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
 
     private data class Response(val status: Int, val bytes: ByteArray, val csrf: String, val contentType: String)
     private data class MultipartPayload(val fileName: String, val mimeType: String, val bytes: ByteArray, val fields: Map<String, String>)
-    private fun transport(method: String, path: String, body: JSONObject?, headers: Map<String, String>, anonymous: Boolean = false, maxBytes: Int = 8 * 1024 * 1024, multipart: MultipartPayload? = null): Response {
+    private fun transport(method: String, path: String, body: JSONObject?, headers: Map<String, String>, anonymous: Boolean = false, maxBytes: Int = 8 * 1024 * 1024, multipart: MultipartPayload? = null, sessionSnapshot: Map<String, String>? = null): Response {
         val uri = ApiContract.endpoint(baseUrl, path)
         val connection = uri.toURL().openConnection() as HttpURLConnection
         try {
@@ -304,7 +317,9 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
             connection.setRequestProperty("User-Agent", "KolbaBotAndroid")
             connection.setRequestProperty("X-App-Version", BuildConfig.VERSION_NAME)
             connection.setRequestProperty("Origin", baseUrl)
-            if (!anonymous) {
+            if (sessionSnapshot != null) {
+                sessionSnapshot.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            } else if (!anonymous) {
                 cookies.get(uri, emptyMap()).forEach { (name, values) -> connection.setRequestProperty(name, values.joinToString("; ")) }
                 if (method != "GET" && csrf.isNotBlank()) connection.setRequestProperty("X-CSRF-Token", csrf)
             }
@@ -335,7 +350,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
             }
             val status = connection.responseCode
             val receivesSession = path in setOf("/api/mobile/auth/exchange", "/api/auth/login", "/api/auth/login/2fa", "/api/auth/register/confirm") && status in setOf(200, 201)
-            if (!anonymous || receivesSession) {
+            if (sessionSnapshot == null && (!anonymous || receivesSession)) {
                 if (anonymous && receivesSession) cookies.cookieStore.removeAll()
                 val responseHeaders = connection.headerFields.filterKeys { it != null }
                 cookies.put(uri, responseHeaders)
@@ -343,7 +358,7 @@ open class ApiClient(context: Context, val baseUrl: String = BuildConfig.BASE_UR
                 if (responseHeaders.keys.any { it.equals("Set-Cookie", true) }) saveSession()
             }
             val headerCsrf = connection.getHeaderField("X-CSRF-Token") ?: ""
-            if (!anonymous && headerCsrf.isNotBlank()) csrf = headerCsrf
+            if (sessionSnapshot == null && !anonymous && headerCsrf.isNotBlank()) csrf = headerCsrf
             val stream = if (status >= 400) connection.errorStream else connection.inputStream
             val bytes = stream?.use { input ->
                 val output = java.io.ByteArrayOutputStream()

@@ -62,12 +62,13 @@ class MainActivity : ComponentActivity() {
     var appearanceRevision by remember { mutableIntStateOf(0) }
     val siteHero = rememberSiteImage("${api.baseUrl}/site-hero?v=$appearanceRevision")
     var socialLinks by remember(api) { mutableStateOf<JSONObject?>(null) }
-    LaunchedEffect(api, appearanceRevision) {
+    val appearanceLive = liveRevision(api, "appearance")
+    LaunchedEffect(api, appearanceRevision, appearanceLive) {
         try { socialLinks = api.get("/api/bootstrap").optJSONObject("site_social_links") }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { /* The site may have no published social links. */ }
     }
-    LaunchedEffect(api, lifecycle, appearanceRevision) {
+    LaunchedEffect(api, lifecycle, appearanceRevision, appearanceLive) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 try {
@@ -96,6 +97,19 @@ class MainActivity : ComponentActivity() {
     val scope = rememberCoroutineScope()
     LaunchedEffect(context, newYear, siteHero) { (context as? android.app.Activity)?.setFestiveTaskIcon(newYear, siteHero) }
     val chrome = remember { SiteChromeState() }
+    val currentAccount = user?.optLong("id") ?: 0L
+    val notificationLive = liveRevision(api, "notifications")
+    val accountLive = liveRevision(api, "account", "plans")
+    LaunchedEffect(api, currentAccount, notificationLive) {
+        if (currentAccount <= 0L) {
+            chrome.unreadNotifications = 0
+        } else {
+            try { chrome.unreadNotifications = api.get("/api/notifications?limit=1").optInt("unread_count") }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Keep the last count during a transient outage. */ }
+        }
+    }
+    if (!checking && user?.optBoolean("requires_pd_consent") != true) LiveUpdates(api, currentAccount)
     fun leaveAdmin() {
         tab = adminReturnTab.takeIf { it in 0..6 && it != 5 } ?: 0
         selectedSection = adminReturnSection.takeUnless { it == "admin" }.orEmpty().ifBlank { "store" }
@@ -160,7 +174,7 @@ class MainActivity : ComponentActivity() {
     OnResume { revision++ }
     LaunchedEffect(tab) { if (tab == 4 || tab == 5) revision++ }
     LaunchedEffect(expiry) { if (expiry > 0) { user = null; verifiedPushUserId = 0; tab = 4; selectedSection = "account"; moreOpen = false } }
-    LaunchedEffect(revision) {
+    LaunchedEffect(revision, accountLive) {
         try {
             user = api.get("/api/auth/me").optJSONObject("user")
             val verified = user

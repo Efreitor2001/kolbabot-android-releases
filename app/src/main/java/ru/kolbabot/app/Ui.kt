@@ -231,9 +231,10 @@ private fun SiteFooter(chrome: SiteChromeState) {
     var error by remember(path) { mutableStateOf("") }
     var loading by remember(path) { mutableStateOf(true) }
     var refresh by remember(path) { mutableIntStateOf(0) }
+    val updates = liveRevision(api, *liveTopics(path))
     OnResume { refresh++ }
-    LaunchedEffect(path, refresh, api.userId) {
-        loading = true; error = ""
+    LaunchedEffect(path, refresh, api.userId, updates) {
+        loading = data == null; error = ""
         try { data = api.get(path) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message ?: "Не удалось загрузить данные." }

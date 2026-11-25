@@ -28,9 +28,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -98,55 +95,43 @@ private suspend fun chatRequest(onError: (String) -> Unit, action: suspend () ->
 
 @Composable
 fun SupportChatScreen(api: ApiClient, admin: Boolean = false, onBack: () -> Unit) {
-    val url = if (admin) "/api/admin/support/chats" else "/api/support/chats"
-    var selected by rememberSaveable(api.userId, admin) { mutableLongStateOf(0) }
-    var anchor by rememberSaveable(api.userId, admin) { mutableLongStateOf(0) }
-    var creating by rememberSaveable(api.userId, admin) { mutableStateOf(false) }
-    var filter by rememberSaveable(api.userId, admin) { mutableStateOf("") }
-    var query by rememberSaveable(api.userId, admin) { mutableStateOf("") }
-    var showSearch by rememberSaveable(api.userId, admin) { mutableStateOf(false) }
+    val festive = LocalNewYear.current
     val drafts = remember(api.userId, admin) { mutableStateMapOf<Long, String>() }
-    var festive by remember(api) { mutableStateOf(false) }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(api, lifecycle) {
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                chatRequest({}) {
-                    val appearance = api.get("/api/site/appearance")
-                    if (appearance.has("new_year_enabled")) festive = appearance.getBoolean("new_year_enabled")
-                }
-                delay(60_000)
-            }
-        }
+    if (!admin) {
+        SupportThread(
+            api = api, path = "/api/support/chats/me", admin = false, initialAnchor = 0, festive = festive,
+            draft = drafts[0L].orEmpty(), setDraft = { drafts[0L] = it }, onAnchor = {}, onBack = onBack,
+        )
+        return
     }
-    val inChat = selected > 0 || creating
-    val closeChat = {
-        selected = 0
-        anchor = 0
-        creating = false
-    }
+
+    val url = "/api/admin/support/chats"
+    var selected by rememberSaveable(api.userId) { mutableLongStateOf(0) }
+    var anchor by rememberSaveable(api.userId) { mutableLongStateOf(0) }
+    var filter by rememberSaveable(api.userId) { mutableStateOf("") }
+    var query by rememberSaveable(api.userId) { mutableStateOf("") }
+    var showSearch by rememberSaveable(api.userId) { mutableStateOf(false) }
+    val closeChat = { selected = 0L; anchor = 0L }
     BackHandler {
         when {
-            inChat -> closeChat()
+            selected > 0 -> closeChat()
             showSearch -> { showSearch = false; query = "" }
             else -> onBack()
         }
     }
     Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
-        if (inChat) {
-            key(selected, creating) {
+        if (selected > 0) {
+            key(selected) {
                 SupportThread(
-                    api = api, url = url, admin = admin, ticket = selected, initialAnchor = anchor, festive = festive,
+                    api = api, path = "$url/$selected", admin = true, initialAnchor = anchor, festive = festive,
                     draft = drafts[selected].orEmpty(), setDraft = { drafts[selected] = it },
                     onAnchor = { anchor = it }, onBack = closeChat,
-                    onCreated = { id -> selected = id; anchor = 0; creating = false },
                 )
             }
         } else {
             SupportChatList(
-                api, url, admin, filter, { filter = it }, query, { query = it }, showSearch,
+                api, url, filter, { filter = it }, query, { query = it }, showSearch,
                 { showSearch = !showSearch; if (!showSearch) query = "" }, onBack,
-                onNew = { creating = true },
                 onOpen = { chat -> selected = chat.optLong("id"); anchor = chat.optLong("match_message_id") },
             )
         }
@@ -155,9 +140,9 @@ fun SupportChatScreen(api: ApiClient, admin: Boolean = false, onBack: () -> Unit
 
 @Composable
 private fun SupportChatList(
-    api: ApiClient, url: String, admin: Boolean, filter: String, onFilter: (String) -> Unit,
+    api: ApiClient, url: String, filter: String, onFilter: (String) -> Unit,
     query: String, onQuery: (String) -> Unit, searching: Boolean, onToggleSearch: () -> Unit,
-    onBack: () -> Unit, onNew: () -> Unit, onOpen: (JSONObject) -> Unit,
+    onBack: () -> Unit, onOpen: (JSONObject) -> Unit,
 ) {
     var chats by remember(filter, query) { mutableStateOf(emptyList<JSONObject>()) }
     var hasMore by remember(filter, query) { mutableStateOf(false) }
@@ -165,7 +150,7 @@ private fun SupportChatList(
     var error by remember(filter, query) { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val updates = liveRevision(api, "support_admin", "users")
     suspend fun load(append: Boolean = false, silent: Boolean = false) {
         if (!silent) { busy = true; error = "" }
         try {
@@ -179,40 +164,31 @@ private fun SupportChatList(
             if (!silent) busy = false
         }
     }
-    LaunchedEffect(api, filter, query, revision, lifecycle) {
+    LaunchedEffect(api, filter, query, revision, updates) {
         if (query.isNotBlank()) delay(250)
-        load()
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                delay(15_000)
-                if (!busy && chats.size <= 40 && query.isBlank()) load(silent = true)
-            }
-        }
+        load(silent = chats.isNotEmpty())
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             ChatIconButton("Назад", "back", onBack)
             Text(
-                if (admin) "Обращения поддержки" else "Поддержка",
+                "Обращения поддержки",
                 Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
             )
-            if (admin) ChatIconButton("Поиск по чатам", "search", onToggleSearch)
-            else ChatIconButton("Новое обращение", "add", onNew)
+            ChatIconButton("Поиск по чатам", "search", onToggleSearch)
         }
-        if (admin) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    listOf(ChatStatus.Open, ChatStatus.Working).forEach { status ->
-                        SupportStatusFilter(status, filter, onFilter, Modifier.weight(1f))
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    FilterChip(filter.isBlank(), { onFilter("") }, { Text("Все", style = MaterialTheme.typography.labelSmall) })
-                    SupportStatusFilter(ChatStatus.Answered, filter, onFilter)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                listOf(ChatStatus.Open, ChatStatus.Working).forEach { status ->
+                    SupportStatusFilter(status, filter, onFilter, Modifier.weight(1f))
                 }
             }
-            if (searching) ChatSearchField(query, onQuery, "ID, имя или сообщение", onToggleSearch)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                FilterChip(filter.isBlank(), { onFilter("") }, { Text("Все", style = MaterialTheme.typography.labelSmall) })
+                SupportStatusFilter(ChatStatus.Answered, filter, onFilter)
+            }
         }
+        if (searching) ChatSearchField(query, onQuery, "ID, имя или сообщение", onToggleSearch)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         if (busy && chats.isEmpty()) LinearProgressIndicator(Modifier.fillMaxWidth())
         if (error.isNotBlank()) {
@@ -251,7 +227,7 @@ private fun SupportChatList(
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Spacer(Modifier.height(3.dp))
-                        ChatStatusBadge(chat.chatStatus(), admin)
+                        ChatStatusBadge(chat.chatStatus(), true)
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -280,34 +256,31 @@ private fun SupportStatusFilter(status: ChatStatus, filter: String, onFilter: (S
 
 @Composable
 private fun SupportThread(
-    api: ApiClient, url: String, admin: Boolean, ticket: Long, initialAnchor: Long, festive: Boolean,
+    api: ApiClient, path: String, admin: Boolean, initialAnchor: Long, festive: Boolean,
     draft: String, setDraft: (String) -> Unit, onAnchor: (Long) -> Unit, onBack: () -> Unit,
-    onCreated: (Long) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val updates = liveRevision(api, if (admin) "support_admin" else "support")
+    var seenUpdates by remember { mutableStateOf(updates) }
     val listState = rememberLazyListState()
     var chat by remember { mutableStateOf<JSONObject?>(null) }
     var messages by remember { mutableStateOf(emptyList<JSONObject>()) }
     var older by remember { mutableStateOf(false) }
     var newer by remember { mutableStateOf(false) }
-    var loading by remember { mutableStateOf(ticket > 0) }
+    var loading by remember { mutableStateOf(true) }
     var sending by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var innerSearch by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
-    val isNew = ticket == 0L
     val searchActive = innerSearch && query.isNotBlank()
-    val path = "$url/$ticket"
     BackHandler(enabled = innerSearch) {
         innerSearch = false
         query = ""
     }
 
     suspend fun load(before: Long = 0, after: Long = 0, around: Long = 0, silent: Boolean = false) {
-        if (isNew) return
         if (!silent) { loading = true; error = "" }
         try {
             chatRequest({ if (!silent) error = it }) {
@@ -338,45 +311,36 @@ private fun SupportThread(
             if (!silent) loading = false
         }
     }
-    LaunchedEffect(ticket, query, initialAnchor, revision, lifecycle) {
-        if (isNew) return@LaunchedEffect
+    LaunchedEffect(path, query, initialAnchor, revision) {
         if (searchActive) delay(250)
         load(around = if (searchActive) 0 else initialAnchor)
-        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                delay(15_000)
-                if (!loading && !sending && !searchActive && !newer) {
-                    load(after = messages.lastOrNull()?.optLong("id") ?: 0L, silent = true)
-                }
-            }
-        }
     }
+    LaunchedEffect(updates, loading, sending) {
+        if (seenUpdates == updates || loading || sending) return@LaunchedEffect
+        seenUpdates = updates
+        if (searchActive) load(silent = true)
+        else if (!newer) load(after = messages.lastOrNull()?.optLong("id") ?: 0L, silent = true)
+    }
+    BackHandler(enabled = !admin && !innerSearch, onBack = onBack)
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            ChatIconButton("К списку чатов", "back", onBack)
-            chat?.let {
+            ChatIconButton(if (admin) "К списку чатов" else "Кабинет", "back", onBack)
+            if (admin) chat?.let {
                 ChatUserId(it.optLong("user_id"), compact = true)
                 Spacer(Modifier.width(8.dp))
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    chat?.optString("title") ?: if (isNew) "Новое обращение" else "Поддержка",
+                    chat?.optString("title") ?: "Поддержка",
                     maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Bold,
                 )
                 chat?.let { ChatStatusBadge(it.chatStatus(), admin) }
             }
-            if (!isNew) Box {
+            if (admin) Box {
                 ChatIconButton("Меню чата", "menu", { menu = true })
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    if (admin) DropdownMenuItem({ Text("Поиск в чате") }, { menu = false; innerSearch = true })
-                    DropdownMenuItem({ Text("Обновить чат") }, {
-                        menu = false
-                        query = ""
-                        innerSearch = false
-                        onAnchor(0)
-                        revision++
-                    })
+                    DropdownMenuItem({ Text("Поиск в чате") }, { menu = false; innerSearch = true })
                     if (admin) {
                         HorizontalDivider()
                         ChatStatus.entries.forEach { status ->
@@ -438,6 +402,7 @@ private fun SupportThread(
                 ChatBubble(
                     message.optString("body"), date?.format(supportClock).orEmpty(),
                     message.optString("sender_role") == if (admin) "admin" else "user", festive, initialAnchor == messageId,
+                    author = message.adminSignature(),
                     onClick = if (searchActive) { {
                         query = ""
                         innerSearch = false
@@ -454,7 +419,7 @@ private fun SupportThread(
         }
         if (error.isNotBlank()) {
             ErrorMessage(error)
-            if (chat == null && !isNew) TextButton({ revision++ }) { Text("Повторить") }
+            if (chat == null) TextButton({ revision++ }) { Text("Повторить") }
         }
         if (!searchActive) {
             Row(
@@ -463,7 +428,7 @@ private fun SupportThread(
             ) {
                 OutlinedTextField(
                     draft, { if (it.length <= 5000) setDraft(it) },
-                    Modifier.weight(1f), label = { Text(if (isNew) "Опишите ваш вопрос" else "Сообщение") },
+                    Modifier.weight(1f), label = { Text("Сообщение") },
                     maxLines = 4, enabled = !sending,
                 )
                 ChatIconButton("Отправить", "send", {
@@ -473,24 +438,28 @@ private fun SupportThread(
                         try {
                             chatRequest({ error = it }) {
                                 val body = JSONObject().put("text", draft.trim())
-                                val result = api.post(if (isNew) "/api/support/tickets" else "$path/messages", body)
+                                api.post("$path/messages", body)
                                 setDraft("")
-                                if (isNew) onCreated(result.optLong("ticket_id"))
-                                else {
-                                    onAnchor(0)
-                                    revision++
-                                }
+                                onAnchor(0)
+                                revision++
                             }
                         } finally { sending = false }
                     }
-                }, enabled = !sending && (isNew || chat != null) && draft.trim().length >= if (isNew) 5 else 1)
+                }, enabled = !sending && (!admin || chat != null) && draft.isNotBlank())
             }
         }
     }
 }
 
+private fun JSONObject.adminSignature(): String {
+    if (optString("sender_role") != "admin") return ""
+    val name = optString("admin_name").takeUnless { it.isBlank() || it == "null" } ?: "Администратор"
+    val id = optLong("admin_id")
+    return if (id > 0) "$name · ID $id" else name
+}
+
 @Composable
-private fun ChatBubble(body: String, time: String, own: Boolean, festive: Boolean, selected: Boolean, onClick: (() -> Unit)?) {
+private fun ChatBubble(body: String, time: String, own: Boolean, festive: Boolean, selected: Boolean, author: String, onClick: (() -> Unit)?) {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val fill = when {
         festive && dark && own -> Color(0xFF302B50)
@@ -523,7 +492,15 @@ private fun ChatBubble(body: String, time: String, own: Boolean, festive: Boolea
             modifier = Modifier.widthIn(max = 360.dp).weight(1f, fill = false),
             shape = if (own) RoundedCornerShape(13.dp, 13.dp, 3.dp, 13.dp) else RoundedCornerShape(13.dp, 13.dp, 13.dp, 3.dp),
             color = fill, contentColor = MaterialTheme.colorScheme.onSurface, border = BorderStroke(if (selected) 2.dp else 1.dp, border),
-        ) { Text(body, Modifier.padding(horizontal = 10.dp, vertical = 7.dp), style = MaterialTheme.typography.bodyMedium) }
+        ) {
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                if (author.isNotBlank()) Text(
+                    author, Modifier.padding(bottom = 3.dp), color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold,
+                )
+                Text(body, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
         if (!own) ChatClock(time)
     }
 }
@@ -574,7 +551,6 @@ private fun ChatIconButton(label: String, icon: String, onClick: () -> Unit, ena
             when (icon) {
                 "back" -> { line(4, 12, 20, 12); line(4, 12, 11, 5); line(4, 12, 11, 19) }
                 "search" -> { drawCircle(color, 6 * unit, point(10, 10), style = Stroke(1.8f * unit)); line(15, 15, 21, 21) }
-                "add" -> { line(5, 12, 19, 12); line(12, 5, 12, 19) }
                 "close" -> { line(6, 6, 18, 18); line(6, 18, 18, 6) }
                 "menu" -> for (y in listOf(5, 12, 19)) drawCircle(color, 1.65f * unit, point(12, y))
                 "send" -> {

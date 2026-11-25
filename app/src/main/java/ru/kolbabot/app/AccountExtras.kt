@@ -43,7 +43,8 @@ fun AccountProfileDetails(api: ApiClient, user: JSONObject, content: @Composable
     var error by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
     OnResume { refresh++ }
-    LaunchedEffect(api, profileId, sessionId, refresh) {
+    val profileUpdates = liveRevision(api, "account")
+    LaunchedEffect(api, profileId, sessionId, refresh, profileUpdates) {
         if (profileId <= 0 || sessionId != profileId) return@LaunchedEffect
         error = ""
         try {
@@ -182,7 +183,8 @@ fun LinkedAccountsScreen(api: ApiClient, user: JSONObject, onBack: () -> Unit, e
         }
     }
     OnResume { refresh++ }
-    LaunchedEffect(api, refresh) {
+    val accountUpdates = liveRevision(api, "account", "plans")
+    LaunchedEffect(api, refresh, accountUpdates) {
         loading = true; error = ""
         try { data = api.get("/api/account/oauth/connections") }
         catch (e: Exception) { error = accountFailure(e) }
