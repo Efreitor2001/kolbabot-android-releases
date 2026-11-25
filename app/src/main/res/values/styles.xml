@@ -2,8 +2,8 @@
     <style name="Theme.KolbaBot" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:colorAccent">#3C61D3</item>
+        <item name="android:colorAccent">#365EEA</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#FBFBF9</item>
+        <item name="android:windowBackground">#F4F6FA</item>
     </style>
 </resources>

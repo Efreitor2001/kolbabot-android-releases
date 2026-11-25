@@ -8,8 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -64,21 +66,21 @@ private fun photoUrl(api: ApiClient, row: JSONObject): String {
 }
 
 @Composable
-fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () -> Unit = {}, onNavigate: (String) -> Unit = {}) {
+fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () -> Unit = {},
+                onCheckoutLogin: (() -> Unit)? = null, onNavigate: (String) -> Unit = {}) {
     var route by rememberSaveable { mutableStateOf("catalog") }
     var cartRevision by remember { mutableIntStateOf(0) }
-    var cartScrollRequest by remember { mutableIntStateOf(0) }
-    var handledCartScroll by remember { mutableIntStateOf(0) }
+    var cartOpen by rememberSaveable { mutableStateOf(false) }
     var handledChromeRequest by remember { mutableIntStateOf(0) }
     var cart by remember { mutableStateOf<JSONObject?>(null) }
     var cartOwner by remember { mutableLongStateOf(-1L) }
     var cartLoading by remember { mutableStateOf(true) }
     var cartError by remember { mutableStateOf("") }
-    val cartTarget = remember { BringIntoViewRequester() }
     val chrome = LocalSiteChrome.current
     var productId by rememberSaveable { mutableLongStateOf(0L) }
     var search by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("") }
+    var categoriesOpen by rememberSaveable { mutableStateOf(false) }
     var visibleCount by rememberSaveable { mutableIntStateOf(30) }
     var selectedVariants by rememberSaveable { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var revision by remember { mutableIntStateOf(0) }
@@ -113,23 +115,16 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         finally { cartLoading = false }
     }
     OnResume { cartRevision++ }
-    LaunchedEffect(route, cartScrollRequest, catalog) {
-        if (route == "catalog" && catalog != null && cartScrollRequest > handledCartScroll) {
-            withFrameNanos { }
-            cartTarget.bringIntoView()
-            handledCartScroll = cartScrollRequest
-        }
-    }
     LaunchedEffect(chrome?.openCartRequest) {
         val request = chrome?.openCartRequest ?: 0
-        if (request > handledChromeRequest) { route = "catalog"; cartScrollRequest++; handledChromeRequest = request }
+        if (request > handledChromeRequest) { cartOpen = true; handledChromeRequest = request }
     }
     fun back() {
         route = "catalog"
         if (route == "catalog") productId = 0
         revision++
     }
-    fun openCart() { route = "catalog"; cartScrollRequest++ }
+    fun openCart() { cartOpen = true }
     BackHandler(route != "catalog") { back() }
     fun updateQuantity(id: Long, quantity: Int, relative: Boolean, added: Boolean = false, closeDetail: Boolean = false) {
         if (busy || !cartReady) return
@@ -152,6 +147,19 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                 }
             } catch (e: Exception) { error = storeFailure(e) } finally { busy = false }
         }
+    }
+    if (cartOpen) CartDrawer(onDismiss = { cartOpen = false }) {
+        val data = catalog
+        if (data == null) {
+            if (error.isBlank()) LinearProgressIndicator(Modifier.fillMaxWidth())
+            else {
+                ErrorMessage(error)
+                OutlinedButton({ revision++ }) { Text("Повторить") }
+            }
+        } else CartContent(api, data, if (cartOwner == api.userId) cart else null, busy || cartLoading, cartError.ifBlank { error },
+            onLogin = onCheckoutLogin ?: { onNavigate("account") }, onRefresh = { cartRevision++ },
+            onChange = { id, delta -> updateQuantity(id, delta, relative = true) },
+            onRemove = { updateQuantity(it, 0, relative = false) })
     }
     when (route) {
         "product" -> {
@@ -179,37 +187,48 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         if (data.optBoolean("premium_active")) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(12.dp)) {
             Text("Ваша скидка PREMIUM: ${data.optInt("premium_discount_percent")}%", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
-        SectionCard {
-        Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("КАТАЛОГ", color = SiteColors.Brand, fontSize = 10.sp, lineHeight = 13.sp,
-                fontWeight = FontWeight.ExtraBold, letterSpacing = 1.1.sp)
-            Text("Выберите товары", fontSize = 17.28.sp, fontWeight = FontWeight.Bold)
+        val categories = listOf("" to "Все товары") + data.items("categories").map {
+            it.optString("id", it.optString("category_id")) to it.optString("title", it.optString("name"))
         }
-        OutlinedTextField(search, { search = it; visibleCount = 30; selectedVariants = emptyMap() }, Modifier.fillMaxWidth(),
-            label = { Text("Поиск") }, singleLine = true, shape = RoundedCornerShape(12.dp),
-            placeholder = { Text("Оболочка, специи, нож…") },
-            trailingIcon = { Text("⌕", color = Color(0xFF778195), fontSize = 22.sp) })
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(category.isEmpty(), { category = ""; visibleCount = 30; selectedVariants = emptyMap() },
-                { Text("Все (${visibleStoreProducts(data.items("products"), "", "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
-            data.items("categories").forEach { cat ->
-                val id = cat.optString("id", cat.optString("category_id"))
-                FilterChip(category == id, { category = id; visibleCount = 30; selectedVariants = emptyMap() },
-                    { Text(cat.optString("title", cat.optString("name")) + " (${visibleStoreProducts(data.items("products"), id, "").size})", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                    Modifier.heightIn(min = 34.dp), colors = storeChipColors(), border = BorderStroke(0.dp, Color.Transparent))
+        OutlinedButton({ categoriesOpen = !categoriesOpen }, Modifier.fillMaxWidth().heightIn(min = 46.dp),
+            shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
+            Text("Категории", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+            Text(if (categoriesOpen) "▴" else "▾")
+        }
+        if (categoriesOpen) Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+            color = SiteColors.Surface, border = BorderStroke(1.dp, SiteColors.Border)) {
+            Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                categories.forEach { (id, title) ->
+                    val selected = id == category
+                    TextButton(onClick = {
+                        category = id; visibleCount = 30; selectedVariants = emptyMap(); categoriesOpen = false
+                    }, Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (selected) SiteColors.AccentSoft else Color.Transparent,
+                        contentColor = if (selected) SiteColors.Brand else SiteColors.Muted)) {
+                        Text(title, Modifier.fillMaxWidth(), fontSize = 12.sp)
+                    }
+                }
             }
         }
-        }
-        HorizontalDivider(Modifier.padding(top = 4.dp, bottom = 6.dp), color = Color(0x121D2A4E))
+        OutlinedTextField(search, { search = it; visibleCount = 30; selectedVariants = emptyMap() }, Modifier.fillMaxWidth(),
+            singleLine = true, shape = RoundedCornerShape(14.dp),
+            placeholder = { Text("Поиск по товарам") },
+            trailingIcon = { Text("⌕", color = SiteColors.Muted, fontSize = 22.sp) })
         val filtered = remember(data, category, search) { visibleStoreProducts(data.items("products"), category, search) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(categories.firstOrNull { it.first == category }?.second ?: "Все товары",
+                fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            Text("${filtered.size} товаров", style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
+        }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = if (LocalConfiguration.current.screenWidthDp <= 420 || LocalDensity.current.fontScale > 1.3f) 1
-                else ((maxWidth.value + 14) / 219).toInt().coerceAtLeast(1)
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            val columns = when {
+                LocalDensity.current.fontScale > 1.3f || maxWidth < 270.dp -> 1
+                maxWidth > 760.dp -> 4
+                else -> 2
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 filtered.take(visibleCount).chunked(columns).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         row.forEach { representative ->
                             key(variantGroup(representative).ifBlank { representative.optString("id") }, category, search) {
                                 val selectionKey = variantGroup(representative).ifBlank { representative.optString("id") }
@@ -229,28 +248,16 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
         }
         if (filtered.isEmpty()) SectionCard { Text("По вашему запросу ничего не найдено.") }
         if (filtered.size > visibleCount) OutlinedButton({ visibleCount += 30 }, Modifier.fillMaxWidth()) { Text("Показать ещё") }
-        }
-        Column(Modifier.fillMaxWidth().bringIntoViewRequester(cartTarget).testTag("storeInlineCart")) {
-            CartContent(api, data, if (cartOwner == api.userId) cart else null, busy || cartLoading, cartError,
-                onLogin = { onNavigate("account") }, onRefresh = { cartRevision++ },
-                onChange = { id, delta -> updateQuantity(id, delta, relative = true) },
-                onRemove = { updateQuantity(it, 0, relative = false) })
-        }
     }
 }
 
-@Composable private fun storeChipColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = MaterialTheme.colorScheme.tertiary,
-    selectedLabelColor = MaterialTheme.colorScheme.onTertiary,
-    containerColor = Color(0xFFF2F4F8), labelColor = Color(0xFF536074))
-
 @Composable private fun storeVariantColors() = FilterChipDefaults.filterChipColors(
-    selectedContainerColor = Color(0xFFEAF6F1), selectedLabelColor = Color(0xFF0B6050),
+    selectedContainerColor = SiteColors.SuccessSoft, selectedLabelColor = SiteColors.StoreGreen,
     containerColor = MaterialTheme.colorScheme.surface, labelColor = MaterialTheme.colorScheme.onSurface)
 
 @Composable private fun storeVariantBorder(selected: Boolean) = FilterChipDefaults.filterChipBorder(
     enabled = true, selected = selected, borderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f),
-    selectedBorderColor = Color(0xFF147A66), borderWidth = 1.dp, selectedBorderWidth = 1.dp)
+    selectedBorderColor = SiteColors.Accent, borderWidth = 1.dp, selectedBorderWidth = 1.dp)
 
 @Composable private fun StoreProductCard(api: ApiClient, representative: JSONObject, products: List<JSONObject>,
                                         cartRows: List<JSONObject>, selectedVariant: Long?, busy: Boolean, modifier: Modifier,
@@ -259,19 +266,25 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
     val variants = remember(products, representative) { products.filter { variantGroup(representative).isNotBlank() && variantGroup(it) == variantGroup(representative) } }
     val product = variants.firstOrNull { it.optLong("id") == selectedVariant } ?: representative
     val id = product.optLong("id")
-    Card(modifier.testTag("store-product-$id"), shape = RoundedCornerShape(17.dp),
+    Card(modifier.testTag("store-product-$id"), shape = RoundedCornerShape(13.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (photoUrl(api, product).isNotBlank()) NetworkImage(photoUrl(api, product), product.optString("title"), Modifier.fillMaxWidth().aspectRatio(1.6f)
-                .clip(RoundedCornerShape(13.dp)).clickable(onClickLabel = "Подробнее") { onOpen(id) })
+        border = BorderStroke(1.dp, SiteColors.Border)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val photo = Modifier.fillMaxWidth().aspectRatio(1.2f).clip(RoundedCornerShape(10.dp))
+                .background(SiteColors.Soft).clickable(onClickLabel = "Подробнее") { onOpen(id) }
+            if (photoUrl(api, product).isNotBlank()) NetworkImage(photoUrl(api, product), product.optString("title"), photo)
+            else Box(photo, contentAlignment = Alignment.Center) {
+                Text(if (product.optString("product_type") == "digital_book") "Цифровой товар" else "Нет фото",
+                    style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted, textAlign = TextAlign.Center)
+            }
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = "Подробнее") { onOpen(id) },
                 horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(product.optString("title"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(product.optString("title"), Modifier.heightIn(min = 54.dp), fontSize = 13.sp, lineHeight = 18.sp,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.ExtraBold)
                     if (product.optString("variant_label").isNotBlank()) Text(product.optString("variant_label"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (product.optInt("review_count") > 0) Text("★ ${product.optDouble("rating_average")} · ${product.optInt("review_count")} отзывов",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        style = MaterialTheme.typography.labelSmall, color = SiteColors.Rating)
                 }
             }
             if (variants.size > 1) FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -281,18 +294,12 @@ fun StoreScreen(api: ApiClient, initialProductId: Long = 0, onProductOpened: () 
                     colors = storeVariantColors(), border = storeVariantBorder(variant.optLong("id") == id), shape = RoundedCornerShape(10.dp)) }
             }
             Text(money(product.optLong("price_kopecks")), color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
             val quantity = cartRows.firstOrNull { it.optLong("product_id", it.optLong("id")) == id }?.optInt("quantity") ?: 0
             if (quantity > 0) StoreQuantityControl(id, quantity, busy, onChange, onSet)
-            else OutlinedButton({ onAdd(id) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("store-add-$id"),
-                enabled = !busy, shape = RoundedCornerShape(999.dp), border = BorderStroke(1.dp, Color(0xFF04C160)),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = Color(0xFF2C2D30),
-                    disabledContainerColor = Color.White, disabledContentColor = Color(0xFF2C2D30)),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("В корзину", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Добавить", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                }
+            else Button({ onAdd(id) }, Modifier.fillMaxWidth().testTag("store-add-$id"), enabled = !busy,
+                shape = RoundedCornerShape(9.dp), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 7.dp)) {
+                Text("В корзину", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
             }
         }
     }
@@ -307,11 +314,11 @@ private fun StoreQuantityControl(id: Long, quantity: Int, busy: Boolean,
     LaunchedEffect(id, quantity, busy, focused) {
         if (!busy && !focused) input = quantity.toString()
     }
-    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).background(Color(0xFFF4F7FB), RoundedCornerShape(12.dp))
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).background(SiteColors.Soft, RoundedCornerShape(12.dp))
         .testTag("store-quantity-$id"), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center) {
         TextButton({ onChange(id, -1) }, Modifier.size(48.dp).semantics { contentDescription = "Уменьшить количество" },
-            enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1769FF))) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+            enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand)) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
         BasicTextField(input, { value -> input = value.filter(Char::isDigit).take(3) },
             Modifier.width(48.dp).heightIn(min = 48.dp).testTag("store-quantity-input-$id")
                 .semantics { contentDescription = "Количество товара" }
@@ -323,12 +330,12 @@ private fun StoreQuantityControl(id: Long, quantity: Int, busy: Boolean,
                     focused = state.isFocused
                 },
             enabled = !busy, singleLine = true,
-            textStyle = TextStyle(color = Color(0xFF111827), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center),
+            textStyle = TextStyle(color = SiteColors.Ink, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             decorationBox = { field -> Box(contentAlignment = Alignment.Center) { field() } })
         TextButton({ onChange(id, 1) }, Modifier.size(48.dp).semantics { contentDescription = "Увеличить количество" },
-            enabled = !busy && quantity < 999, colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF1769FF))) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
+            enabled = !busy && quantity < 999, colors = ButtonDefaults.textButtonColors(contentColor = SiteColors.Brand)) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold) }
     }
 }
 
@@ -366,12 +373,12 @@ private fun StoreBannerCarousel(api: ApiClient, catalog: JSONObject, onNavigate:
             val banner = banners[index]
             Card(colors = CardDefaults.cardColors(containerColor = Color.Transparent), modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f))) {
-                Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFE1F1EA), Color(0xFFFFF5E6)))).padding(16.dp),
+                Column(Modifier.fillMaxWidth().background(SiteColors.SuccessSoft).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val image = banner.optString("image_url")
                     if (image.isNotBlank()) NetworkImage(if (image.startsWith("/")) api.baseUrl + image else image,
                         banner.optString("title"), Modifier.fillMaxWidth().height(160.dp))
-                    val accent = when (banner.optString("kind")) { "referral" -> Color(0xFF8A4B16); "reviews", "review-bonus" -> Color(0xFF8A3B65); else -> MaterialTheme.colorScheme.onTertiaryContainer }
+                    val accent = SiteColors.StoreGreen
                     Text(banner.optString("title"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = accent)
                     Text(plainText(banner.optString("text", banner.optString("body"))), style = MaterialTheme.typography.bodyMedium)
                     val link = banner.optString("link_url")
@@ -426,15 +433,15 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
             if (error.isNotBlank()) ErrorMessage(error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button({ add(id) }, Modifier.weight(1f).testTag("store-detail-add-$id")
-                    .background(Brush.linearGradient(listOf(Color(0xFF1B937C), Color(0xFF147A66))), RoundedCornerShape(9.dp)),
+                    .background(SiteColors.AddToCart, RoundedCornerShape(9.dp)),
                     enabled = !busy, shape = RoundedCornerShape(9.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White,
-                        disabledContainerColor = Color.Transparent, disabledContentColor = Color.White)) {
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = SiteColors.CartInk,
+                        disabledContainerColor = Color.Transparent, disabledContentColor = SiteColors.CartInk)) {
                     Text("Добавить в корзину", fontWeight = FontWeight.ExtraBold)
                 }
                 OutlinedButton(cart) { Text("Открыть корзину") }
             }
-            if (p.optString("product_type") == "digital_book") Text("Электронная книга. После оплаты доставляется на указанный e-mail.")
+            if (p.optString("product_type") == "digital_book") Text("Цифровой товар. После оплаты доставляется на указанный e-mail.")
             if (p.optLong("weight_grams") > 0) Text("Вес для доставки: ${p.optLong("weight_grams")} г")
             if (p.optString("length").isNotBlank()) Text("Длина: ${p.optString("length")} м")
             if (p.optString("dimensions").isNotBlank()) Text("Размеры: ${p.optString("dimensions")}")
@@ -492,32 +499,70 @@ private fun ProductScreen(api: ApiClient, id: Long, busy: Boolean, message: Stri
 }
 
 @Composable
-private fun CartContent(api: ApiClient, catalog: JSONObject, cart: JSONObject?, busy: Boolean, error: String,
+private fun CartDrawer(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+            Surface(Modifier.widthIn(max = 520.dp).fillMaxWidth().fillMaxHeight().testTag("storeCartDrawer"),
+                color = SiteColors.CartSurface, contentColor = SiteColors.Ink) {
+                CompositionLocalProvider(LocalSiteCart provides true) {
+                    Column(Modifier.systemBarsPadding().imePadding()) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Ваш заказ", style = MaterialTheme.typography.labelSmall, color = SiteColors.CartIcon)
+                                Text("Корзина", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Товары и доставка", color = SiteColors.CartMuted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            OutlinedButton(onDismiss, Modifier.size(42.dp), shape = RoundedCornerShape(11.dp),
+                                border = BorderStroke(1.dp, SiteColors.CartBorder),
+                                contentPadding = PaddingValues(0.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(containerColor = SiteColors.CartIconBackground, contentColor = SiteColors.CartIcon)) {
+                                Text("×", fontSize = 24.sp, modifier = Modifier.semantics { contentDescription = "Закрыть корзину" })
+                            }
+                        }
+                        HorizontalDivider(color = SiteColors.CartBorder)
+                        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.CartContent(api: ApiClient, catalog: JSONObject, cart: JSONObject?, busy: Boolean, error: String,
                         onLogin: () -> Unit, onRefresh: () -> Unit, onChange: (Long, Int) -> Unit, onRemove: (Long) -> Unit) {
-    SectionCard("Корзина") {
-        Text("Ваш заказ · Товары и доставка", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (error.isNotBlank()) ErrorMessage(error)
         if (cart == null && error.isBlank()) CircularProgressIndicator()
         cart?.optString("merge_notice")?.takeIf { it.isNotBlank() }?.let { Text(it) }
         OutlinedButton(onRefresh, enabled = !busy) { Text("Обновить корзину") }
         val rows = cart?.items("items") ?: emptyList()
-        if (cart != null && rows.isEmpty()) Text("Корзина пуста. Выберите товары в магазине.")
+        if (cart != null && rows.isEmpty()) Text("Корзина пуста. Добавьте товары из магазина — здесь появятся количество, доставка и итоговая сумма.",
+            color = SiteColors.CartMuted)
         rows.forEach { item ->
-            SectionCard(item.optString("title")) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    NetworkImage(photoUrl(api, item), item.optString("title"), Modifier.size(60.dp))
-                    Text(money(item.optLong("price_kopecks") * item.optInt("quantity", 1)), fontWeight = FontWeight.Bold)
-                }
+            Surface(Modifier.fillMaxWidth(), color = SiteColors.CartItem, border = BorderStroke(1.dp, SiteColors.CartBorder),
+                shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(storePurchaseTitle(item), style = MaterialTheme.typography.titleSmall)
+                val quantity = item.optInt("quantity", 1)
+                val weight = item.optLong("shipping_weight_grams", item.optLong("weight_grams"))
+                Text(money(item.optLong("price_kopecks")), fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                if (weight > 0) Text("$weight г × $quantity = ${weight * quantity} г", color = SiteColors.CartMuted,
+                    style = MaterialTheme.typography.bodySmall)
                 val id = item.optLong("product_id", item.optLong("id"))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton({ onChange(id, -1) }, Modifier.testTag("cart-minus-$id"), enabled = !busy) { Text("−") }
                     Text("${item.optInt("quantity", 1)} шт.")
                     OutlinedButton({ onChange(id, 1) }, Modifier.testTag("cart-plus-$id"), enabled = !busy && item.optInt("quantity", 1) < 999) { Text("+") }
+                    Spacer(Modifier.weight(1f))
+                    Text(money(item.optLong("price_kopecks") * quantity), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                 }
                 TextButton({ onRemove(id) }, enabled = !busy) { Text("Убрать товар") }
-            }
+            } }
         }
         if (rows.isNotEmpty()) {
+            HorizontalDivider(color = SiteColors.CartBorder)
             val subtotal = rows.sumOf { it.optLong("price_kopecks") * it.optInt("quantity", 1) }
             val digitalIds = catalog.items("products").filter { it.optString("product_type") == "digital_book" }.map { it.optLong("id") }.toSet()
             val minimum = if (rows.all { it.optLong("product_id") in digitalIds }) 0 else catalog.optJSONObject("store_settings")?.optLong("minimum_order_kopecks") ?: 0
@@ -768,7 +813,7 @@ private fun CheckoutContent(api: ApiClient, cart: JSONObject, catalog: JSONObjec
         if (hasDigital) OutlinedTextField(email, { email = it }, Modifier.fillMaxWidth(), enabled = !busy,
             label = { Text("E-mail для доставки цифровых товаров") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), singleLine = true)
         SectionCard("Сумма заказа") {
-            rows.forEach { Text("${it.optString("title")} × ${it.optInt("quantity", 1)} · ${money(it.optLong("price_kopecks") * it.optInt("quantity", 1))}") }
+            rows.forEach { Text("${storePurchaseTitle(it)} × ${it.optInt("quantity", 1)} · ${money(it.optLong("price_kopecks") * it.optInt("quantity", 1))}") }
             Text("Товары: ${money(total)}")
             if (spent > 0) Text("Колбаски: −${money(spent)}")
             Text("Доставка: ${shipping?.let(::money) ?: "требуется расчёт"}")
@@ -786,7 +831,9 @@ private fun CheckoutContent(api: ApiClient, cart: JSONObject, catalog: JSONObjec
         val deliveryReady = allDigital || (method.isNotBlank() && if (method == "ozon" && !manualPoint) pointId > 0 && (!ozonApi || currentQuote != null) else address.trim().length >= 5)
         val ready = name.trim().length >= 3 && phone.filter(Char::isDigit).length >= 7 && deliveryReady &&
             (!hasDigital || android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) && offer && privacy && adult && total - spent >= minimumOrder
-        Button(::submit, Modifier.fillMaxWidth(), enabled = !busy && !cartUpdating && ready && catalog.optJSONObject("payments")?.optBoolean("enabled") == true) {
+        Button(::submit, Modifier.fillMaxWidth().heightIn(min = 50.dp),
+            enabled = !busy && !cartUpdating && ready && catalog.optJSONObject("payments")?.optBoolean("enabled") == true,
+            colors = ButtonDefaults.buttonColors(containerColor = SiteColors.AddToCart, contentColor = SiteColors.CartInk)) {
             Text(if (busy) "Создаём заказ…" else "Оформить заказ")
         }
         if (catalog.optJSONObject("payments")?.optBoolean("enabled") != true) Text("Оплата сейчас недоступна. Попробуйте позже.")
@@ -815,9 +862,10 @@ private fun StoreOrderSummary(order: JSONObject) {
     AdminCopyField("Итого", money(order.optLong("total_kopecks")))
     if (order.optLong("sausages_bonus_kopecks") > 0) AdminCopyField("Колбаски за заказ", money(order.optLong("sausages_bonus_kopecks")))
     order.items("items").forEach { item -> SectionCard {
-        AdminCopyField("Товар", item.optString("title"))
+        AdminCopyField("Товар", storePurchaseTitle(item))
         AdminCopyField("Количество", item.optInt("quantity", 1).toString())
-        AdminCopyField("Сумма", money(item.optLong("amount_kopecks")))
+        AdminCopyField("Сумма", money(if (order.optLong("subscription_discount_kopecks") > 0)
+            item.optLong("original_amount_kopecks", item.optLong("amount_kopecks")) else item.optLong("amount_kopecks")))
     } }
     if (order.optString("customer_name").isNotBlank()) AdminCopyField("ФИО", order.optString("customer_name"))
     if (order.optString("phone").isNotBlank()) AdminCopyField("Телефон", order.optString("phone"))

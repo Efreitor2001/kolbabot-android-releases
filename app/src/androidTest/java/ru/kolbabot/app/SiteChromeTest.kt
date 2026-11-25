@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class SiteChromeTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun cartRemainsAtTheTopAfterTheSiteHeaderScrollsAway() {
+    @Test fun cartRemainsAtTheTopWhileThePageScrolls() {
         var opened = 0
         val header = SiteChromeState().apply { onCart = { opened++ } }
         compose.setContent { KolbaTheme { CompositionLocalProvider(LocalSiteChrome provides header) {
@@ -45,8 +45,8 @@ class SiteChromeTest {
             onNotifications = { error("Guest must not open account notifications") }
         }
         compose.setContent { KolbaTheme { SiteChrome(header) } }
-        compose.onNodeWithText("Гость", substring = false).assertIsDisplayed()
-        compose.onNodeWithText("Демо").assertIsDisplayed()
+        compose.onNodeWithText("Цех", substring = false).assertIsDisplayed()
+        compose.onNode(hasContentDescription("Включить", substring = true)).assertExists()
         compose.onNodeWithText("Корзина: 3").performClick()
         compose.onNodeWithText("Войти", substring = false).performClick()
         compose.onNodeWithText("Выйти", substring = false).assertDoesNotExist()
@@ -62,13 +62,12 @@ class SiteChromeTest {
         }
         header.onLogout = { logoutCalls++; header.user = null; header.access = null; header.cartCount = 0 }
         compose.setContent { KolbaTheme { SiteChrome(header) } }
-        compose.onNodeWithText("Первый аккаунт", substring = false).assertIsDisplayed()
-        compose.onNodeWithText("ADMIN").assertIsDisplayed()
         compose.onNodeWithContentDescription("Уведомления").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Меню аккаунта").performClick()
+        compose.onNodeWithText("Первый аккаунт · ADMIN").assertIsDisplayed()
         compose.onNodeWithText("Выйти", substring = false).performClick()
-        compose.onNodeWithText("Гость", substring = false).assertIsDisplayed()
-        compose.onNodeWithText("ADMIN").assertDoesNotExist()
-        compose.onNodeWithText("Первый аккаунт", substring = false).assertDoesNotExist()
+        compose.onNodeWithText("Войти", substring = false).assertIsDisplayed()
+        compose.onNodeWithText("Первый аккаунт · ADMIN").assertDoesNotExist()
         compose.onNodeWithContentDescription("Уведомления").assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(1, logoutCalls)
@@ -76,10 +75,9 @@ class SiteChromeTest {
             header.access = JSONObject().put("access_tier", "premium")
             header.busy = true
         }
-        compose.onNodeWithText("Второй аккаунт", substring = false).assertIsDisplayed()
-        compose.onNodeWithText("PREMIUM").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Меню аккаунта").performClick()
+        compose.onNodeWithText("Второй аккаунт · PREMIUM").assertIsDisplayed()
         compose.onNodeWithText("Выйти", substring = false).assertIsNotEnabled()
-        compose.onNodeWithText("ADMIN").assertDoesNotExist()
-        compose.onNodeWithText("Гость", substring = false).assertDoesNotExist()
+        compose.onNodeWithText("Первый аккаунт · ADMIN").assertDoesNotExist()
     }
 }

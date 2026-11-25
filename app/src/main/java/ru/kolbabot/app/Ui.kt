@@ -10,6 +10,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,24 +20,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.DpOffset
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -58,33 +53,54 @@ fun money(kopecks: Long): String = NumberFormat.getNumberInstance(Locale.forLang
 fun plainText(html: String): String = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString().trim()
 
 @Composable fun KolbaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = lightColorScheme(
-        // Brand and surface colors come from static/styles.css, shared with the site.
-        primary = SiteColors.Brand, onPrimary = Color.White,
-        primaryContainer = Color(0xFFEBEFFB), onPrimaryContainer = Color(0xFF3C61D3),
-        secondary = SiteColors.Brand2, onSecondary = Color.White,
-        secondaryContainer = Color(0xFFF1ECFB), onSecondaryContainer = Color(0xFF7245D8),
-        tertiary = Color(0xFF147A66), onTertiary = Color.White,
-        tertiaryContainer = Color(0xFFEAF6F1), onTertiaryContainer = Color(0xFF0B6050),
+    val context = LocalContext.current
+    val settings = remember(context) { context.getSharedPreferences("kolbabot_appearance", Context.MODE_PRIVATE) }
+    val systemDark = isSystemInDarkTheme()
+    var preference by remember(settings) { mutableStateOf(settings.getString("theme", null)) }
+    val dark = preference?.let { it == "dark" } ?: systemDark
+    val view = LocalView.current
+    SideEffect {
+        (context as? android.app.Activity)?.window?.let { window ->
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
+    CompositionLocalProvider(LocalSiteDark provides dark, LocalToggleTheme provides {
+        preference = if (dark) "light" else "dark"
+        settings.edit().putString("theme", preference).apply()
+    }) { SiteMaterialTheme(content) }
+}
+
+@Composable private fun SiteMaterialTheme(content: @Composable () -> Unit) {
+    // Keep JavaScript and Compose on the same semantic colors from static/theme.css.
+    val scheme = if (LocalSiteDark.current) darkColorScheme() else lightColorScheme()
+    MaterialTheme(colorScheme = scheme.copy(
+        primary = SiteColors.Brand, onPrimary = SiteColors.Surface,
+        primaryContainer = SiteColors.AccentSoft, onPrimaryContainer = SiteColors.Brand,
+        secondary = SiteColors.Brand, onSecondary = SiteColors.Surface,
+        secondaryContainer = SiteColors.Soft, onSecondaryContainer = SiteColors.Ink,
+        tertiary = SiteColors.Accent, onTertiary = SiteColors.Surface,
+        tertiaryContainer = SiteColors.SuccessSoft, onTertiaryContainer = SiteColors.StoreGreen,
         background = SiteColors.BackgroundTop, onBackground = SiteColors.Ink,
-        surface = Color.White, onSurface = SiteColors.Ink,
-        surfaceVariant = Color(0xFFF4F3EE), onSurfaceVariant = Color(0xFF6B7280),
-        surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFF4F3EE),
-        surfaceContainerLow = Color(0xFFFBFBF9), surfaceContainerLowest = Color.White,
+        surface = SiteColors.Surface, onSurface = SiteColors.Ink,
+        surfaceVariant = SiteColors.Soft, onSurfaceVariant = SiteColors.Muted,
+        surfaceContainer = SiteColors.Surface, surfaceContainerHigh = SiteColors.Soft,
+        surfaceContainerLow = SiteColors.BackgroundTop, surfaceContainerLowest = SiteColors.Surface,
         outline = SiteColors.InputBorder, outlineVariant = SiteColors.CustomerBorder,
-        error = SiteColors.Error, onError = Color.White,
+        error = SiteColors.Error, onError = SiteColors.Surface,
         errorContainer = SiteColors.ErrorBackground, onErrorContainer = SiteColors.Error,
         surfaceTint = Color.Transparent,
     ), shapes = Shapes(extraSmall = RoundedCornerShape(10.dp), small = RoundedCornerShape(10.dp),
         medium = RoundedCornerShape(12.dp), large = RoundedCornerShape(18.dp), extraLarge = RoundedCornerShape(20.dp)),
         typography = Typography(
-            // Literata is declared by the site but not loaded; its rendered heading fallback is serif.
-            displayLarge = siteType(40, 48, FontWeight.Bold, serif = true),
-            displayMedium = siteType(34, 42, FontWeight.Bold, serif = true),
-            displaySmall = siteType(30, 38, FontWeight.Bold, serif = true),
-            headlineLarge = siteType(27, 34, FontWeight.Bold, serif = true),
-            headlineMedium = siteType(24, 31, FontWeight.Bold, serif = true),
-            headlineSmall = siteType(21, 28, FontWeight.Bold, serif = true),
+            displayLarge = siteType(40, 48, FontWeight.Bold),
+            displayMedium = siteType(34, 42, FontWeight.Bold),
+            displaySmall = siteType(30, 38, FontWeight.Bold),
+            headlineLarge = siteType(27, 34, FontWeight.Bold),
+            headlineMedium = siteType(24, 31, FontWeight.Bold),
+            headlineSmall = siteType(21, 28, FontWeight.Bold),
             titleLarge = siteType(19, 26, FontWeight.Bold),
             titleMedium = siteType(17, 24, FontWeight.Bold),
             titleSmall = siteType(14, 20, FontWeight.Bold),
@@ -94,110 +110,73 @@ fun plainText(html: String): String = Html.fromHtml(html, Html.FROM_HTML_MODE_CO
         ), content = content)
 }
 
-private fun siteType(size: Int, height: Int, weight: FontWeight = FontWeight.Normal, serif: Boolean = false) =
-    TextStyle(fontFamily = if (serif) FontFamily.Serif else SiteFontFamily, fontSize = size.sp,
-        lineHeight = height.sp, fontWeight = weight, letterSpacing = 0.16.sp)
+private fun siteType(size: Int, height: Int, weight: FontWeight = FontWeight.Normal) =
+    TextStyle(fontFamily = SiteFontFamily, fontSize = size.sp,
+        lineHeight = height.sp, fontWeight = weight, letterSpacing = 0.sp)
 
 @Composable fun Page(title: String, subtitle: String = "", onBack: (() -> Unit)? = null, eyebrow: String = "", content: @Composable ColumnScope.() -> Unit) {
     // Register before content so a nested editor, dialog or picker handles Back first.
     BackHandler(enabled = onBack != null) { onBack?.invoke() }
     val admin = LocalSiteAdmin.current
     val pageScroll = rememberScrollState()
-    val heading = if (!admin && onBack == null) sitePageHeading(title) else null
-    val caption = eyebrow.ifBlank { heading?.eyebrow.orEmpty() }
-    val headingShape = RoundedCornerShape(if (admin) 18.dp else 20.dp)
-    Column(Modifier.fillMaxSize().sitePageBackground()
-        .verticalScroll(pageScroll).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().background(SiteColors.BackgroundTop)
+        .verticalScroll(pageScroll).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (admin) CompositionLocalProvider(LocalAdminScrollOffset provides { pageScroll.value }) { LocalAdminChrome.current?.invoke() }
         if (!admin && onBack == null) LocalSiteChrome.current?.let { SiteChrome(it, scrollOffset = { pageScroll.value }) }
         onBack?.let { TextButton(onClick = it, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)) { Text("‹ Назад") } }
-        Surface(Modifier.fillMaxWidth().then(if (admin) Modifier else Modifier.dropShadow(headingShape,
-            Shadow(radius = 42.dp, offset = DpOffset(0.dp, 18.dp), color = SiteColors.Brand.copy(alpha = .075f)))), shape = headingShape,
-            color = Color.Transparent, border = BorderStroke(1.dp,
-                if (admin) SiteColors.Border else SiteColors.Brand.copy(alpha = 0.18f))) {
-            Box(if (admin) Modifier.background(Color.White) else Modifier.sitePageHeadingBackground()) {
-                heading?.let { mark ->
-                    Surface(Modifier.align(Alignment.BottomEnd).offset(x = 15.dp, y = 22.dp).size(76.dp)
-                        .rotate(4f).alpha(0.15f).clearAndSetSemantics {}, shape = RoundedCornerShape(23.dp), color = Color.Transparent,
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.62f))) {
-                        Box(Modifier.background(Brush.linearGradient(mark.colors)), contentAlignment = Alignment.Center) {
-                            when (mark.symbol) {
-                                "store" -> Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(34.dp), tint = Color.White)
-                                "account" -> Icon(painterResource(R.drawable.site_nav_account), null, Modifier.size(34.dp), tint = Color.White)
-                                else -> Text(mark.symbol, color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                    }
-                }
-                Column(Modifier.padding(start = 18.dp, end = if (heading == null) 18.dp else 38.dp,
-                    top = if (admin) 14.dp else 20.dp, bottom = if (admin) 14.dp else 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (caption.isNotBlank()) Text(caption.uppercase(Locale.forLanguageTag("ru-RU")),
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, letterSpacing = 0.96.sp), color = SiteColors.Brand)
-                    Text(title, style = if (admin) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineLarge)
-                    if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = SiteColors.Muted)
-                }
-            }
-        }
+        SitePageHeading(title, subtitle, eyebrow, admin)
         content()
         Spacer(Modifier.height(8.dp))
     }
 }
 
-private fun Modifier.sitePageHeadingBackground() = drawWithCache {
-    val extent = (size.width + size.height) * .25f
-    val start = Offset(size.width * .5f - extent, size.height * .5f - extent)
-    val end = Offset(size.width * .5f + extent, size.height * .5f + extent)
-    val base = Brush.linearGradient(0f to SiteColors.Brand.copy(alpha = .095f), .52f to Color.White.copy(alpha = .95f),
-        1f to SiteColors.Accent.copy(alpha = .07f), start = start, end = end)
-    val glow = Brush.radialGradient(listOf(SiteColors.Brand2.copy(alpha = .16f), Color.Transparent),
-        center = Offset(size.width * .92f, size.height * .08f), radius = kotlin.math.hypot(size.width * .92f, size.height * .92f) * .31f)
-    onDrawBehind { drawRect(base); drawRect(glow) }
-}
-
-private fun Modifier.sitePageBackground() = drawWithCache {
-    val direction = Offset(.0871557f, .9961947f) // CSS linear-gradient(175deg).
-    val extent = (size.width * direction.x + size.height * direction.y) * .5f
-    val center = Offset(size.width * .5f, size.height * .5f)
-    val base = Brush.linearGradient(listOf(SiteColors.BackgroundTop, SiteColors.BackgroundBottom),
-        start = center - direction * extent, end = center + direction * extent)
-    fun noise(x: Float, y: Float, radius: Float, color: Color) = Brush.radialGradient(listOf(color, Color.Transparent),
-        center = Offset(size.width * x, size.height * y),
-        radius = kotlin.math.hypot(size.width * maxOf(x, 1f - x), size.height * maxOf(y, 1f - y)) * radius)
-    val blue = noise(.18f, .16f, .4f, SiteColors.Brand.copy(alpha = .04f))
-    val green = noise(.84f, .2f, .3f, SiteColors.Accent.copy(alpha = .03f))
-    val purple = noise(.74f, .8f, .34f, SiteColors.Brand2.copy(alpha = .04f))
-    onDrawBehind { drawRect(base); drawRect(purple); drawRect(green); drawRect(blue) }
-}
-
-private data class SitePageHeading(val eyebrow: String, val symbol: String, val colors: List<Color>)
-private fun sitePageHeading(title: String): SitePageHeading? {
-    val standard = listOf(SiteColors.Brand, SiteColors.Brand2)
-    val green = listOf(Color(0xFF14836E), Color(0xFF24A98E))
-    val purple = listOf(Color(0xFF5B4CC4), Color(0xFF8B5BD9))
-    val blue = listOf(Color(0xFF31528F), Color(0xFF4F75B9))
-    if (title.startsWith("Рады вас видеть,")) return SitePageHeading("Личный кабинет", "account", standard)
-    return when (title) {
-        "Всё для домашнего производства", "Магазин" -> SitePageHeading("Магазин", "store", green)
-        "Готовые рецепты", "Рецепты" -> SitePageHeading("Рецептуры", "≡", standard)
-        "Свой состав" -> SitePageHeading("Калькулятор", "∑", purple)
-        "Справочник технолога", "Справочник" -> SitePageHeading("База знаний", "i", blue)
-        "Статьи" -> SitePageHeading("Полезные материалы", "Aa", purple)
-        "Оборудование" -> SitePageHeading("Инструменты", "⌁", listOf(Color(0xFF3E5565), Color(0xFF6F8592)))
-        "Частые вопросы", "FAQ" -> SitePageHeading("Быстрая помощь", "?", blue)
-        "Поддержка" -> SitePageHeading("Связь с нами", "↗", green)
-        "Личный кабинет" -> SitePageHeading("Личный кабинет", "account", standard)
-        "Больше возможностей Колбабота" -> SitePageHeading("PREMIUM", "P", listOf(Color(0xFFB87A12), Color(0xFFE3B54F)))
+@Composable
+private fun SitePageHeading(title: String, subtitle: String, eyebrow: String, admin: Boolean) {
+    val symbol = when {
+        title == "Готовые рецепты" -> R.drawable.site_section_recipes
+        title == "Свой состав" -> R.drawable.site_section_custom
+        title == "Справочник технолога" -> R.drawable.site_section_handbook
+        title == "Статьи" -> R.drawable.site_section_articles
+        title == "Оборудование" -> R.drawable.site_section_equipment
+        title == "Частые вопросы" || title == "FAQ" -> R.drawable.site_section_faq
+        title == "Поддержка" -> R.drawable.site_section_support
+        title.startsWith("Рады вас видеть,") -> R.drawable.site_nav_account
+        title == "Больше возможностей Колбабота" -> R.drawable.site_section_premium
         else -> null
     }
+    val store = title == "Всё для домашнего производства"
+    val text: @Composable ColumnScope.() -> Unit = {
+        if (eyebrow.isNotBlank() && !store) {
+            Text(eyebrow, style = MaterialTheme.typography.labelSmall, color = SiteColors.Brand)
+        }
+        val fontSize = when { store -> 30; admin -> 23; symbol != null -> 22; else -> 24 }
+        Text(title, style = siteType(fontSize, if (store) 35 else fontSize + 6,
+            if (store) FontWeight.ExtraBold else FontWeight.Bold).copy(
+                letterSpacing = if (store) (-.045).em else (-.025).em))
+        if (subtitle.isNotBlank()) Text(subtitle, style = siteType(13, 20), color = SiteColors.Muted)
+    }
+    if (!admin && symbol != null) Surface(Modifier.fillMaxWidth(), color = SiteColors.Surface,
+        shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, SiteColors.Border)) {
+        Row(Modifier.heightIn(min = 96.dp).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp), content = text)
+            if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp > 600) {
+                Surface(Modifier.size(52.dp), color = SiteColors.AccentSoft, contentColor = SiteColors.Brand,
+                    shape = RoundedCornerShape(15.dp), border = BorderStroke(1.dp, SiteColors.Border)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(symbol), null, Modifier.size(28.dp)) }
+                }
+            }
+        }
+    } else Column(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp), content = text)
 }
 
 @Composable fun SectionCard(title: String = "", content: @Composable ColumnScope.() -> Unit) {
-    val admin = LocalSiteAdmin.current
-    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp,
-        if (admin) SiteColors.Border else SiteColors.CustomerBorder),
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, SiteColors.Border),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = if (admin) 0.85f else 0.94f))) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        colors = CardDefaults.cardColors(containerColor = SiteColors.Surface)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (title.isNotBlank()) Text(title, style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold, color = SiteColors.Ink, modifier = Modifier.padding(bottom = 4.dp))
             content()
@@ -245,7 +224,7 @@ private fun sitePageHeading(title: String): SitePageHeading? {
     }
 }
 
-@Composable fun NetworkImage(url: String, description: String, modifier: Modifier = Modifier) {
+@Composable internal fun rememberSiteImage(url: String): android.graphics.Bitmap? {
     val image by produceState<android.graphics.Bitmap?>(null, url) {
         value = withContext(Dispatchers.IO) {
             if (url.isBlank()) return@withContext null
@@ -275,7 +254,11 @@ private fun sitePageHeading(title: String): SitePageHeading? {
             } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { null }
         }
     }
-    val bitmap = image
+    return image
+}
+
+@Composable fun NetworkImage(url: String, description: String, modifier: Modifier = Modifier) {
+    val bitmap = rememberSiteImage(url)
     if (bitmap != null) Image(bitmap.asImageBitmap(), contentDescription = description, modifier = modifier, contentScale = ContentScale.Fit)
     else Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
         Text("К", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

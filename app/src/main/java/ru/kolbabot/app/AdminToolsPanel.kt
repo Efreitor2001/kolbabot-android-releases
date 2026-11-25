@@ -28,6 +28,7 @@ import org.json.JSONObject
     var busy by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<ToolsConfirmation?>(null) }
     val scope = rememberCoroutineScope()
+    val refreshAppearance = LocalRefreshAppearance.current
     OnResume { revision++ }
     LaunchedEffect(api, revision) {
         error = ""
@@ -92,6 +93,14 @@ import org.json.JSONObject
             }
         }
         ToolGroup("Оформление сайта", "Изображения интерфейса, которые видят пользователи.") {
+            bootstrap?.takeIf { it.has("new_year_enabled") }?.let { data ->
+                AdminEditForm("Новогодний режим", listOf(AdminField("new_year_enabled", "Включить новогоднее оформление", "bool")),
+                    data, ::complete, embedded = true, saveLabel = "Сохранить оформление") { values ->
+                    api.patch("/api/admin/settings/appearance", JSONObject().put("new_year_enabled", values.getBoolean("new_year_enabled")))
+                    refreshAppearance()
+                    revision++
+                }
+            }
             Text("Картинка в шапке (квадратная)")
             AdminUploadButton(api, "/api/admin/branding/upload", "Загрузить картинку шапки", arrayOf("image/*"), mapOf("kind" to "hero"))
             Text("Значок вкладки (favicon)")
@@ -144,7 +153,7 @@ import org.json.JSONObject
 
 @Composable private fun ToolGroup(title: String, note: String, body: @Composable ColumnScope.() -> Unit) {
     Surface(Modifier.fillMaxWidth().testTag("tool-$title"), shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, SiteColors.Border), color = Color.White.copy(alpha = .85f)) {
+        border = BorderStroke(1.dp, SiteColors.Border), color = SiteColors.Surface) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
             Text(note, color = SiteColors.Muted, style = MaterialTheme.typography.bodySmall)

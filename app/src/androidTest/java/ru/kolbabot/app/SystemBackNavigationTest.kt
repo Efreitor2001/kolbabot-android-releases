@@ -68,6 +68,7 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Админ-редактор").assertExists()
         compose.onNodeWithText("Рады вас видеть,", substring = true).assertDoesNotExist()
         compose.onNodeWithTag("site-bottom-more").assertDoesNotExist()
+        compose.onNodeWithTag("admin-menu-open").performClick()
         compose.onNodeWithTag("admin-tab-users").performScrollTo().performClick()
         compose.onNodeWithTag("admin-user-picker").performScrollTo().performClick()
         compose.onNodeWithTag("admin-user-picker-search").performTextInput("никого")

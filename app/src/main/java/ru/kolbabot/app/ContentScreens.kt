@@ -410,7 +410,7 @@ fun KnowledgeScreen(api: ApiClient, onOpenAccount: (() -> Unit)? = null,
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 row.forEach { item ->
                                     Surface(onClick = { equipmentId = item.optInt("id") }, modifier = Modifier.weight(1f).testTag("equipment-${item.optInt("id")}"),
-                                        shape = RoundedCornerShape(17.dp), color = androidx.compose.ui.graphics.Color.White,
+                                        shape = RoundedCornerShape(17.dp), color = SiteColors.Surface,
                                         border = BorderStroke(1.dp, SiteColors.CustomerBorder), shadowElevation = 1.dp) {
                                         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             if (item.optString("photo_url").isNotBlank()) NetworkImage(contentUrl(api, item.optString("photo_url")), item.optString("title"), Modifier.fillMaxWidth().aspectRatio(1.6f).clip(RoundedCornerShape(13.dp)))

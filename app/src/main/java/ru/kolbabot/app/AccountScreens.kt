@@ -117,6 +117,10 @@ import java.util.Locale
                     AccountOrdersInline(api) { selectedAccountOrder = it; route = "orders" }
                 }
             }, footer = {
+                SectionCard("Цех на бумаге") {
+                    Text("Книга, калькулятор и финансовый план производства. После первой активации — доступ навсегда.")
+                    OutlinedButton({ NativeNavigation.requests.tryEmit(AppDestination("tseh")) }) { Text("Открыть Цех") }
+                }
                 NotificationPreferences(api)
                 AccountLink("Уведомления", "Сообщения и изменения заказов") { route = "notifications" }
                 SectionCard("О приложении") {

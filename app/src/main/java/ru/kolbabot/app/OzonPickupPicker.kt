@@ -228,6 +228,8 @@ private fun OzonMap(api: ApiClient, selected: JSONObject?, modifier: Modifier, o
     val show by rememberUpdatedState(onPoints)
     val tiles = remember(api) { OzonMapTiles(api.baseUrl) }
     val mapHooks = LocalOzonMapHooks.current
+    val theme = if (LocalSiteDark.current) "dark" else "light"
+    val currentTheme by rememberUpdatedState(theme)
     var locationRequest by remember { mutableStateOf<Pair<String, GeolocationPermissions.Callback>?>(null) }
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         locationRequest?.let { (origin, callback) ->
@@ -261,6 +263,9 @@ private fun OzonMap(api: ApiClient, selected: JSONObject?, modifier: Modifier, o
                 }
             }
             webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String) {
+                    view.evaluateJavascript("document.documentElement.dataset.theme = '$currentTheme'", null)
+                }
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = true
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val url = request?.url ?: return null
@@ -283,7 +288,9 @@ private fun OzonMap(api: ApiClient, selected: JSONObject?, modifier: Modifier, o
         val bridge = OzonMapBridge(api, scope, selected, tiles, { script -> webView.evaluateJavascript(script, null) }, { choose(it) }, { show(it) })
         webView.addJavascriptInterface(bridge, "AndroidOzon")
         // Preserve the site's HTTPS origin: its PMTiles CDN uses origin-specific CORS.
-        webView.loadDataWithBaseURL("${api.baseUrl}/__native_ozon_map__/", context.assets.open("ozon-map.html").bufferedReader().use { it.readText() }, "text/html", "UTF-8", null)
+        val mapPage = context.assets.open("ozon-map.html").bufferedReader().use { it.readText() }
+            .replace("<html lang=\"ru\">", "<html lang=\"ru\" data-theme=\"$currentTheme\">")
+        webView.loadDataWithBaseURL("${api.baseUrl}/__native_ozon_map__/", mapPage, "text/html", "UTF-8", null)
         onDispose {
             locationRequest?.let { (origin, callback) -> callback.invoke(origin, false, false) }
             locationRequest = null
@@ -293,5 +300,6 @@ private fun OzonMap(api: ApiClient, selected: JSONObject?, modifier: Modifier, o
             webView.destroy()
         }
     }
+    LaunchedEffect(theme, webView) { webView.evaluateJavascript("document.documentElement.dataset.theme = '$theme'", null) }
     AndroidView(factory = { webView }, modifier = modifier)
 }

@@ -84,7 +84,7 @@ class OzonCheckoutTest {
 
     private fun show(api: DeliveryApi) {
         compose.setContent { KolbaTheme { StoreScreen(api) } }
-        compose.onNodeWithTag("storeInlineCart").assertExists()
+        compose.onNodeWithTag("storeCartDrawer").assertExists()
         compose.onNodeWithTag("site-select-Способ доставки").performScrollTo().assertExists()
     }
 

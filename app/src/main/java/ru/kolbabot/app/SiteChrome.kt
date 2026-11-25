@@ -1,7 +1,6 @@
 package ru.kolbabot.app
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -9,22 +8,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
 import org.json.JSONObject
 
 internal class SiteChromeState {
+    var socialLinks by mutableStateOf<JSONObject?>(null)
     var cartCount by mutableIntStateOf(0)
     var openCartRequest by mutableIntStateOf(0)
     var user by mutableStateOf<JSONObject?>(null)
@@ -40,66 +35,97 @@ internal class SiteChromeState {
 
 internal val LocalSiteChrome = staticCompositionLocalOf<SiteChromeState?> { null }
 
-/** Native rendering of index.html product-header and its mobile nav-actions. */
+/** Mobile product-header from static/index.html. */
 @Composable internal fun SiteChrome(state: SiteChromeState, scrollOffset: () -> Int = { 0 }) {
-    var heroHeight by remember { mutableIntStateOf(0) }
-    var metaHeight by remember { mutableIntStateOf(0) }
-    val headerGaps = with(LocalDensity.current) { 14.dp.roundToPx() }
+    var menu by remember { mutableStateOf(false) }
     val user = state.user
     val name = user?.optString("username").orEmpty().ifBlank {
         listOf(user?.optString("first_name"), user?.optString("last_name")).filterNotNull().joinToString(" ").trim()
-    }.ifBlank { if (user == null) "Гость" else "Пользователь" }
-    Column(Modifier.zIndex(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Surface(Modifier.onSizeChanged { heroHeight = it.height }, shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .94f),
-            border = BorderStroke(1.dp, SiteColors.CustomerBorder), shadowElevation = 1.dp) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Text("ДОМАШНИЕ РЕЦЕПТЫ И МАГАЗИН", fontSize = 10.sp, lineHeight = 14.sp,
-                        letterSpacing = 1.1.sp, fontWeight = FontWeight.Bold, color = SiteColors.Muted, maxLines = 1)
-                    Text("Колбабот", style = TextStyle(brush = Brush.linearGradient(
-                        0f to Color(0xFF1E3A8A), .45f to Color(0xFF3C61D3), 1f to Color(0xFF1B937C)),
-                        fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 23.2.sp, lineHeight = 24.36.sp))
-                    Spacer(Modifier.height(4.dp))
-                    Text(if (user == null) "Изучайте разделы без входа. Для оплаты, сохранения и кабинета войдите в аккаунт."
-                        else "Привет, $name. Сайт готов к работе.", fontSize = 11.sp, lineHeight = 15.sp,
-                        color = Color(0xFF687286), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }.ifBlank { "Пользователь" }
+    Surface(Modifier.fillMaxWidth().zIndex(1f).offset { IntOffset(0, scrollOffset()) }, color = SiteColors.BackgroundTop) {
+        Column {
+            FestiveHeader {
+                Row(Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(Modifier.clickable { state.onNavigate("store") }, verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SiteMascot(38.dp)
+                        if (LocalConfiguration.current.screenWidthDp > 430) {
+                            Text("Колбабот", fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                        }
+                    }
+                    FilledTonalButton({ state.onNavigate("tseh") }, shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp), modifier = Modifier.height(40.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SiteColors.AccentSoft, contentColor = SiteColors.Brand)) {
+                        Text("Цех", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    SiteThemeButton()
+                    Button(state.onCart, shape = RoundedCornerShape(11.dp), modifier = Modifier.height(40.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SiteColors.AddToCart, contentColor = SiteColors.CartInk)) {
+                        Icon(painterResource(R.drawable.site_nav_store), null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Корзина: ${state.cartCount}", fontSize = 11.sp, maxLines = 1)
+                    }
+                    if (user == null) {
+                        Button(state.onAccount, Modifier.height(40.dp), shape = RoundedCornerShape(11.dp),
+                            contentPadding = PaddingValues(horizontal = 9.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SiteColors.Action, contentColor = Color.White)) { Text("Войти", fontSize = 12.sp) }
+                    } else {
+                        IconButton(state.onNotifications, Modifier.size(34.dp, 40.dp)) {
+                            Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(19.dp), tint = SiteColors.Ink)
+                        }
+                        Box {
+                            OutlinedIconButton({ menu = true }, Modifier.size(36.dp, 40.dp), shape = RoundedCornerShape(11.dp)) {
+                                Icon(painterResource(R.drawable.site_nav_account), "Меню аккаунта", Modifier.size(18.dp), tint = SiteColors.Ink)
+                            }
+                            DropdownMenu(menu, { menu = false }) {
+                                Text("$name · ${siteTierLabel(user, state.access)}", Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = SiteColors.Muted)
+                                DropdownMenuItem({ Text("Личный кабинет") }, { menu = false; state.onAccount() })
+                                if (user.optBoolean("is_admin")) DropdownMenuItem({ Text("Админ") }, { menu = false; state.onNavigate("admin") })
+                                DropdownMenuItem({ Text("Выйти") }, { menu = false; state.onLogout() }, enabled = !state.busy)
+                            }
+                        }
+                    }
                 }
-                Image(painterResource(R.drawable.site_robot), "Логотип сайта", Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)))
             }
+            SiteSocialLinks(state.socialLinks)
+            HorizontalDivider(color = SiteColors.Border)
+            if (state.error.isNotBlank()) ErrorMessage(state.error)
         }
-        Surface(Modifier.onSizeChanged { metaHeight = it.height }, shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = .94f), border = BorderStroke(1.dp, SiteColors.CustomerBorder)) {
-            Row(Modifier.fillMaxWidth().padding(5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                HeaderBadge(name, Modifier.weight(1f))
-                HeaderBadge(siteTierLabel(user, state.access))
-                androidx.compose.material3.TextButton(onClick = if (user == null) state.onAccount else state.onLogout,
-                    enabled = !state.busy, shape = RoundedCornerShape(11.dp), contentPadding = PaddingValues(horizontal = 9.dp, vertical = 7.dp),
-                    modifier = Modifier.heightIn(min = 32.dp), colors = ButtonDefaults.textButtonColors(containerColor = Color(0xFFEEF2FF), contentColor = SiteColors.Brand)) {
-                    Text(if (user == null) "Войти" else "Выйти", fontSize = 11.sp, lineHeight = 15.sp)
-                }
-            }
-        }
-        Surface(Modifier.offset { IntOffset(0, (scrollOffset() - heroHeight - metaHeight - headerGaps).coerceAtLeast(0)) },
-            shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = .96f), border = BorderStroke(1.dp, SiteColors.CustomerBorder)) {
-            Row(Modifier.fillMaxWidth().padding(5.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(state.onCart, Modifier.weight(1f).height(44.dp), shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, SiteColors.Accent.copy(alpha = 0.18f)),
-                    colors = ButtonDefaults.outlinedButtonColors(containerColor = SiteColors.Accent.copy(alpha = 0.09f), contentColor = Color(0xFF116A59))) {
-                    Text("Корзина: ${state.cartCount}", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
-                }
-                if (user != null) OutlinedButton(state.onNotifications, Modifier.size(44.dp), shape = RoundedCornerShape(50), contentPadding = PaddingValues(10.dp)) {
-                    Icon(painterResource(R.drawable.ic_stat_notification), "Уведомления", Modifier.size(22.dp))
-                }
-            }
-        }
-        if (state.error.isNotBlank()) ErrorMessage(state.error)
     }
 }
 
-@Composable private fun HeaderBadge(text: String, modifier: Modifier = Modifier) {
-    Surface(modifier, shape = RoundedCornerShape(11.dp), color = Color(0xFFF4F6FA)) {
-        Text(text, Modifier.padding(horizontal = 9.dp, vertical = 7.dp), fontWeight = FontWeight.Bold,
-            fontSize = 11.sp, lineHeight = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private data class SiteSocial(val key: String, val name: String, val icon: Int, val fill: Long)
+
+private val siteSocials = listOf(
+    SiteSocial("vk", "ВКонтакте", R.drawable.site_social_vk, 0xFF0077FF),
+    SiteSocial("max", "MAX", R.drawable.site_social_max, 0x00000000),
+    SiteSocial("youtube", "YouTube", R.drawable.site_social_youtube, 0xFFFF0033),
+    SiteSocial("instagram", "Instagram", R.drawable.site_social_instagram, 0xFFC13584),
+    SiteSocial("telegram", "Telegram", R.drawable.site_social_telegram, 0xFF229ED9),
+    SiteSocial("facebook", "Facebook", R.drawable.site_social_facebook, 0xFF1877F2),
+    SiteSocial("tiktok", "TikTok", R.drawable.site_social_tiktok, 0xFF111111),
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable private fun SiteSocialLinks(links: JSONObject?) {
+    val visible = siteSocials.mapNotNull { item ->
+        val url = links?.optString(item.key)?.takeIf { it.startsWith("https://") } ?: return@mapNotNull null
+        item to url
+    }
+    if (visible.isEmpty()) return
+    val context = LocalContext.current
+    FlowRow(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        visible.forEach { (item, url) ->
+            Surface({ openLink(context, url) }, Modifier.size(30.dp), shape = RoundedCornerShape(9.dp), color = Color(item.fill)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(painterResource(item.icon), item.name, Modifier.size(if (item.key == "max") 30.dp else 17.dp),
+                        tint = if (item.key == "max") Color.Unspecified else Color.White)
+                }
+            }
+        }
     }
 }
 

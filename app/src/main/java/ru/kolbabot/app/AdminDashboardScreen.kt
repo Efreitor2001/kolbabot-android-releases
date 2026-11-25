@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -134,7 +135,7 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
         DashboardKpi("Выручка за месяц", money(kpi.optLong("revenue_month_kopecks")), trend, Color(0xFF1B937C),
             if (kpi.isNull("revenue_change_percent")) SiteColors.Muted else if (kpi.optDouble("revenue_change_percent") >= 0) Color(0xFF13705E) else SiteColors.Error),
         DashboardKpi("Заказы в работе", dashboardNumber(kpi.optLong("orders_waiting")), "За месяц: ${dashboardNumber(kpi.optLong("orders_month"))} · Сегодня: ${dashboardNumber(kpi.optLong("orders_today"))}", Color(0xFFF59E0B)),
-        DashboardKpi("Активные подписки", dashboardNumber(kpi.optLong("active_subscriptions")), "Действующий доступ", SiteColors.Brand2),
+        DashboardKpi("Активные подписки", dashboardNumber(kpi.optLong("active_subscriptions")), "Действующий доступ", SiteColors.Brand),
         DashboardKpi("Сейчас онлайн", dashboardNumber(kpi.optLong("users_online")), "Уникальные аккаунты · за ${kotlin.math.ceil(kpi.optDouble("online_window_seconds", 60.0) / 60).toInt().coerceAtLeast(1)} мин", Color(0xFF16A34A)),
         DashboardKpi("Пользователи", dashboardNumber(kpi.optLong("users_total")), "+${dashboardNumber(kpi.optLong("users_new_today"))} сегодня · +${dashboardNumber(kpi.optLong("users_new_month"))} за месяц", SiteColors.Brand),
         DashboardKpi("Поддержка", dashboardNumber(kpi.optLong("tickets_open")), kpi.optString("oldest_ticket_at").takeUnless { it.isBlank() || it == "null" }
@@ -208,9 +209,9 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
                     Text(user.optString("username").ifBlank { "Пользователь #${user.optLong("id")}" }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     Text(user.optString("email").ifBlank { dashboardDate(user.optString("created_at"), "Email не указан") }, fontSize = 11.sp, color = SiteColors.Muted)
                 }
-                Surface(shape = RoundedCornerShape(8.dp), color = if (active) Color(0xFF22C55E).copy(alpha = .12f) else Color(0xFFF1F5F9)) {
+                Surface(shape = RoundedCornerShape(8.dp), color = if (active) Color(0xFF22C55E).copy(alpha = .12f) else SiteColors.Soft) {
                     Text(if (active) user.optString("subscription_tier").uppercase(Locale.ROOT) else "Без подписки", Modifier.padding(6.dp),
-                        fontSize = 10.sp, color = if (active) Color(0xFF166534) else SiteColors.Muted)
+                        fontSize = 10.sp, color = if (active) SiteColors.StoreGreen else SiteColors.Muted)
                 }
             }
             HorizontalDivider(color = SiteColors.Border)
@@ -226,28 +227,28 @@ private fun dashboardNumber(value: Long) = java.text.NumberFormat.getIntegerInst
                 Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text("${dashboardNumber(ready)} / ${dashboardNumber(total)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
-            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF0F2F7))
+            Box(Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(10.dp)).background(SiteColors.Soft)
                 .semantics { contentDescription = "$title: ${(fraction * 100).roundToInt()}%" }) {
-                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Brush.horizontalGradient(listOf(SiteColors.Brand, SiteColors.Brand2))))
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(SiteColors.Action))
             }
             Spacer(Modifier.height(7.dp))
         }
     }
 }
 
-private data class DashboardKpi(val title: String, val value: String, val note: String, val tint: Color, val noteColor: Color = SiteColors.Muted)
+private data class DashboardKpi(val title: String, val value: String, val note: String, val tint: Color, val noteColor: Color = Color.Unspecified)
 @Composable private fun KpiTile(item: DashboardKpi, modifier: Modifier) {
-    Surface(modifier.heightIn(min = 126.dp), shape = RoundedCornerShape(17.dp), color = Color.White.copy(alpha = .88f), border = BorderStroke(1.dp, SiteColors.Border), shadowElevation = 1.dp) {
+    Surface(modifier.heightIn(min = 126.dp), shape = RoundedCornerShape(17.dp), color = SiteColors.Surface, border = BorderStroke(1.dp, SiteColors.Border), shadowElevation = 1.dp) {
         Column(Modifier.drawBehind { drawCircle(item.tint.copy(alpha = .15f), 43.dp.toPx(), Offset(size.width - 21.dp.toPx(), size.height - 15.dp.toPx())) }.padding(14.dp)) {
             Text(item.title.uppercase(Locale.forLanguageTag("ru-RU")), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = SiteColors.Muted, letterSpacing = .8.sp)
             Text(item.value, Modifier.padding(top = 12.dp, bottom = 7.dp), fontSize = 27.sp, lineHeight = 29.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(item.note, fontSize = 12.sp, lineHeight = 16.sp, color = item.noteColor)
+            Text(item.note, fontSize = 12.sp, lineHeight = 16.sp, color = item.noteColor.takeOrElse { SiteColors.Muted })
         }
     }
 }
 
 @Composable private fun DashboardCard(kicker: String, title: String, tag: String, body: @Composable ColumnScope.() -> Unit) {
-    Surface(Modifier.fillMaxWidth().testTag(tag), shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .86f), border = BorderStroke(1.dp, SiteColors.Border)) {
+    Surface(Modifier.fillMaxWidth().testTag(tag), shape = RoundedCornerShape(18.dp), color = SiteColors.Surface, border = BorderStroke(1.dp, SiteColors.Border)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(kicker.uppercase(Locale.forLanguageTag("ru-RU")), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp, color = SiteColors.Brand)
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -258,7 +259,7 @@ private data class DashboardKpi(val title: String, val value: String, val note: 
 
 private data class DashboardAction(val key: String, val icon: String, val title: String, val note: String, val target: String)
 @Composable private fun DashboardActionRow(item: DashboardAction, count: String = "", onClick: () -> Unit) {
-    Surface(onClick, Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = Color(0xFFF7F8FC), border = BorderStroke(1.dp, SiteColors.Border)) {
+    Surface(onClick, Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = SiteColors.Soft, border = BorderStroke(1.dp, SiteColors.Border)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = RoundedCornerShape(10.dp), color = SiteColors.Brand.copy(alpha = .1f)) {
                 Text(item.icon, Modifier.padding(10.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SiteColors.Brand)
@@ -286,7 +287,7 @@ private data class DashboardAction(val key: String, val icon: String, val title:
                     .background(Brush.verticalGradient(listOf(SiteColors.Brand.copy(alpha = .025f), SiteColors.Brand.copy(alpha = .055f)))), contentAlignment = Alignment.BottomCenter) {
                     Box(Modifier.fillMaxWidth(.72f).widthIn(max = 28.dp).fillMaxHeight(day.fraction(maximum))
                         .clip(RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp, bottomStart = 2.dp, bottomEnd = 2.dp))
-                        .background(Brush.verticalGradient(listOf(SiteColors.Brand, SiteColors.Brand2))))
+                        .background(SiteColors.Action))
                     if (!compact) Text(day.transactions.toString(), Modifier.align(Alignment.TopCenter).padding(top = 7.dp), fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = SiteColors.Muted)
                 }
                 Box(Modifier.height(35.dp).width(34.dp), contentAlignment = Alignment.Center) {

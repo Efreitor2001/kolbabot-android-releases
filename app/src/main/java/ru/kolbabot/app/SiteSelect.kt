@@ -24,17 +24,17 @@ internal fun SiteSelect(
     enabled: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val admin = LocalSiteAdmin.current
+    val cart = LocalSiteCart.current
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = SiteColors.Ink)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = if (cart) SiteColors.CartMuted else SiteColors.Muted)
         Box(Modifier.fillMaxWidth()) {
             Surface(onClick = { expanded = true }, enabled = enabled && options.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().testTag("site-select-$label")
                     .semantics { stateDescription = if (expanded) "Развёрнуто" else "Свёрнуто" },
-                shape = RoundedCornerShape(if (admin) 10.dp else 12.dp),
-                color = if (admin) Color.White else SiteColors.InputBackground,
-                border = BorderStroke(1.dp, if (admin) SiteColors.Border else SiteColors.CustomerBorder)) {
-                Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = if (cart) SiteColors.CartItem else SiteColors.Surface,
+                border = BorderStroke(1.dp, if (cart) SiteColors.CartBorder else SiteColors.Border)) {
+                Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(options.firstOrNull { it.first == value }?.second ?: "Выберите…", Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium, color = if (enabled) SiteColors.Ink else SiteColors.Muted)

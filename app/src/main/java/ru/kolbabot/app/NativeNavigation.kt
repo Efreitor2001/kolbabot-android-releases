@@ -17,6 +17,7 @@ internal fun nativeDestination(url: String, baseUrl: String = BuildConfig.BASE_U
     if (uri.path in listOf("/admin", "/admin/")) {
         return if (uri.rawQuery.isNullOrEmpty() && uri.fragment.isNullOrEmpty()) AppDestination("admin") else null
     }
+    if (uri.path in listOf("/tseh", "/tseh/") && uri.rawQuery.isNullOrEmpty()) return AppDestination("tseh")
     if (uri.path !in listOf("", "/")) return null
     val params = uri.rawQuery.orEmpty().split('&').mapNotNull {
         val pair = it.split('=', limit = 2)
