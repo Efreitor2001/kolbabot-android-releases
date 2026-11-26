@@ -103,8 +103,8 @@ android {
         applicationId = "ru.kolbabot.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.0.8"
+        versionCode = 11
+        versionName = "1.0.9"
         buildConfigField("String", "BASE_URL", "\"$serverUrl\"")
         buildConfigField("boolean", "HAS_FIREBASE_CONFIG", hasFirebaseConfiguration.toString())
         buildConfigField("boolean", "HAS_HUAWEI_CONFIG", hasHuaweiConfiguration.toString())

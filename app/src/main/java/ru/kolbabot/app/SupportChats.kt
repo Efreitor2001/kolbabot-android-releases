@@ -131,8 +131,18 @@ fun SupportChatScreen(api: ApiClient, admin: Boolean = false, onBack: () -> Unit
         } else {
             SupportChatList(
                 api, url, filter, { filter = it }, query, { query = it }, showSearch,
-                { showSearch = !showSearch; if (!showSearch) query = "" }, onBack,
+                {
+                    showSearch = !showSearch
+                    if (showSearch) filter = "" else query = ""
+                }, onBack,
                 onOpen = { chat -> selected = chat.optLong("id"); anchor = chat.optLong("match_message_id") },
+                onStarted = { chat ->
+                    filter = ""
+                    query = ""
+                    showSearch = false
+                    selected = chat.optLong("id")
+                    anchor = 0
+                },
             )
         }
     }
@@ -142,15 +152,17 @@ fun SupportChatScreen(api: ApiClient, admin: Boolean = false, onBack: () -> Unit
 private fun SupportChatList(
     api: ApiClient, url: String, filter: String, onFilter: (String) -> Unit,
     query: String, onQuery: (String) -> Unit, searching: Boolean, onToggleSearch: () -> Unit,
-    onBack: () -> Unit, onOpen: (JSONObject) -> Unit,
+    onBack: () -> Unit, onOpen: (JSONObject) -> Unit, onStarted: (JSONObject) -> Unit,
 ) {
     var chats by remember(filter, query) { mutableStateOf(emptyList<JSONObject>()) }
     var hasMore by remember(filter, query) { mutableStateOf(false) }
     var busy by remember(filter, query) { mutableStateOf(true) }
     var error by remember(filter, query) { mutableStateOf("") }
     var revision by remember { mutableIntStateOf(0) }
+    var picking by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val updates = liveRevision(api, "support_admin", "users")
+    var seenUpdates by remember(api) { mutableStateOf(updates) }
     suspend fun load(append: Boolean = false, silent: Boolean = false) {
         if (!silent) { busy = true; error = "" }
         try {
@@ -164,9 +176,14 @@ private fun SupportChatList(
             if (!silent) busy = false
         }
     }
-    LaunchedEffect(api, filter, query, revision, updates) {
+    LaunchedEffect(api, filter, query, revision) {
         if (query.isNotBlank()) delay(250)
-        load(silent = chats.isNotEmpty())
+        load()
+    }
+    LaunchedEffect(updates, busy) {
+        if (seenUpdates == updates || busy) return@LaunchedEffect
+        seenUpdates = updates
+        load(silent = true)
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -183,9 +200,11 @@ private fun SupportChatList(
                     SupportStatusFilter(status, filter, onFilter, Modifier.weight(1f))
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilterChip(filter.isBlank(), { onFilter("") }, { Text("Все", style = MaterialTheme.typography.labelSmall) })
                 SupportStatusFilter(ChatStatus.Answered, filter, onFilter)
+                Spacer(Modifier.weight(1f))
+                ChatIconButton("Начать чат", "add", { picking = true })
             }
         }
         if (searching) ChatSearchField(query, onQuery, "ID, имя или сообщение", onToggleSearch)
@@ -237,6 +256,99 @@ private fun SupportChatList(
             }
         }
     }
+    if (picking) SupportRecipientPicker(api, url, onClose = { picking = false }) { chat ->
+        picking = false
+        onStarted(chat)
+    }
+}
+
+@Composable
+private fun SupportRecipientPicker(api: ApiClient, url: String, onClose: () -> Unit, onStarted: (JSONObject) -> Unit) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var selected by rememberSaveable { mutableLongStateOf(0) }
+    var recipients by remember(query) { mutableStateOf(emptyList<JSONObject>()) }
+    var hasMore by remember(query) { mutableStateOf(false) }
+    var busy by remember(query) { mutableStateOf(true) }
+    var starting by remember { mutableStateOf(false) }
+    var error by remember(query) { mutableStateOf("") }
+    var revision by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    suspend fun load(append: Boolean = false) {
+        busy = true
+        error = ""
+        try {
+            chatRequest({ error = it }) {
+                val data = api.get("$url/recipients?q=${chatQuery(query)}&offset=${if (append) recipients.size else 0}")
+                val page = data.items("items")
+                recipients = if (append) (recipients + page).distinctBy { it.optLong("user_id") } else page
+                hasMore = data.optBoolean("has_more")
+            }
+        } finally {
+            busy = false
+        }
+    }
+    LaunchedEffect(api, query, revision) {
+        if (query.isNotBlank()) delay(250)
+        load()
+    }
+    AlertDialog(
+        onDismissRequest = { if (!starting) onClose() },
+        title = { Text("Выберите пользователя") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    query, { if (it.length <= 160) { query = it; selected = 0 } },
+                    Modifier.fillMaxWidth(), singleLine = true, enabled = !starting,
+                    label = { Text("ID, имя, почта или телефон") },
+                )
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (error.isNotBlank()) ErrorMessage(error)
+                if (recipients.isEmpty() && !busy) {
+                    if (error.isBlank()) Text("Пользователи не найдены.", Modifier.padding(vertical = 8.dp))
+                    else TextButton({ revision++ }) { Text("Повторить") }
+                }
+                LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                    items(recipients, key = { it.optLong("user_id") }) { user ->
+                        val id = user.optLong("user_id")
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = !starting) { selected = id },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected == id, onClick = null, modifier = Modifier.padding(horizontal = 10.dp))
+                            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                Text(user.optString("title"))
+                                Text("ID $id", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    if (hasMore) item {
+                        TextButton({ scope.launch { load(append = true) } }, enabled = !busy && !starting) { Text("Ещё пользователи") }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val id = selected
+                    starting = true
+                    error = ""
+                    scope.launch {
+                        try {
+                            chatRequest({ error = it }) {
+                                val data = api.post(url, JSONObject().put("user_id", id))
+                                onStarted(data.getJSONObject("chat"))
+                            }
+                        } finally {
+                            starting = false
+                        }
+                    }
+                },
+                enabled = selected > 0 && !starting && recipients.any { it.optLong("user_id") == selected },
+            ) { Text("Начать чат") }
+        },
+        dismissButton = { TextButton(onClose, enabled = !starting) { Text("Отмена") } },
+    )
 }
 
 @Composable
@@ -383,6 +495,9 @@ private fun SupportThread(
             }
             if (messages.isEmpty() && searchActive && !loading && error.isBlank()) item {
                 Text("Совпадений нет.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (messages.isEmpty() && !searchActive && !loading && error.isBlank()) item {
+                Text("Сообщений пока нет.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             itemsIndexed(messages, key = { _, message -> message.optLong("id") }) { index, message ->
                 val date = chatTime(message.optString("created_at"))
@@ -552,6 +667,7 @@ private fun ChatIconButton(label: String, icon: String, onClick: () -> Unit, ena
                 "back" -> { line(4, 12, 20, 12); line(4, 12, 11, 5); line(4, 12, 11, 19) }
                 "search" -> { drawCircle(color, 6 * unit, point(10, 10), style = Stroke(1.8f * unit)); line(15, 15, 21, 21) }
                 "close" -> { line(6, 6, 18, 18); line(6, 18, 18, 6) }
+                "add" -> { line(5, 12, 19, 12); line(12, 5, 12, 19) }
                 "menu" -> for (y in listOf(5, 12, 19)) drawCircle(color, 1.65f * unit, point(12, y))
                 "send" -> {
                     drawPath(Path().apply {
