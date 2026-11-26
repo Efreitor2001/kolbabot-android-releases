@@ -20,7 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CopyOnWriteArrayList
 
-/** Real Android Back dispatch with isolated API fixtures. Every write fails immediately. */
+/** Real Android Back dispatch with isolated API fixtures. */
 @RunWith(AndroidJUnit4::class)
 class SystemBackNavigationTest {
     @get:Rule val compose = createComposeRule()
@@ -169,6 +169,19 @@ class SystemBackNavigationTest {
         compose.onNodeWithText("Админ-меню").assertExists()
     }
 
+    @Test fun adminSelectsARecipientAndOpensTheNormalChat() {
+        val api = BackFakeApi(context, accountId, admin = true)
+        compose.setContent { KolbaTheme { SupportChatScreen(api, admin = true, onBack = {}) } }
+        compose.onNodeWithContentDescription("Начать чат").performClick()
+        compose.onNodeWithText("Выберите пользователя").assertIsDisplayed()
+        compose.onNodeWithText("Начать чат").assertIsNotEnabled()
+        compose.onNodeWithText("Новый собеседник").performClick()
+        compose.onNodeWithText("Начать чат").performClick()
+        compose.onNodeWithText("Новый собеседник").assertIsDisplayed()
+        compose.onNodeWithText("Сообщений пока нет.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Отправить").assertExists()
+    }
+
 }
 
 private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boolean = false) : ApiClient(context, "https://back-smoke.invalid") {
@@ -214,6 +227,14 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
                         .put("admin_name", "Анна").put("body", "Ответ администратора")
                 ))
             }
+            path.startsWith("/api/admin/support/chats/53?") -> {
+                check(admin)
+                JSONObject().put("chat", newSupportChat()).put("items", JSONArray())
+            }
+            path.startsWith("/api/admin/support/chats/recipients?") -> {
+                check(admin)
+                JSONObject().put("items", JSONArray().put(JSONObject().put("user_id", 45).put("title", "Новый собеседник")))
+            }
             path.startsWith("/api/admin/support/chats?") -> {
                 check(admin)
                 JSONObject().put("items", JSONArray().put(supportChat()))
@@ -221,7 +242,13 @@ private class BackFakeApi(context: Context, id: Long = 0, private val admin: Boo
             else -> throw AssertionError("Unexpected GET $path")
         }
     }
-    override suspend fun post(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected POST $path")
+    private fun newSupportChat() = JSONObject().put("id", 53).put("user_id", 45)
+        .put("title", "Новый собеседник").put("status", "in_progress")
+
+    override suspend fun post(path: String, body: JSONObject, headers: Map<String, String>): JSONObject {
+        check(admin && path == "/api/admin/support/chats" && body.optLong("user_id") == 45L) { "Unexpected POST $path" }
+        return JSONObject().put("chat", newSupportChat())
+    }
     override suspend fun put(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected PUT $path")
     override suspend fun patch(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected PATCH $path")
     override suspend fun delete(path: String, body: JSONObject, headers: Map<String, String>): JSONObject = throw AssertionError("Unexpected DELETE $path")
